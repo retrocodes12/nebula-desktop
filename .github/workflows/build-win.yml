@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -22,9 +25,12 @@ jobs:
       - name: Build Windows installer + portable
         run: npm run dist
 
-      - name: Upload Windows builds
-        uses: actions/upload-artifact@v4
-        with:
-          name: clearkey-player-windows
-          path: dist/*.exe
-          if-no-files-found: error
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete v1.0.0 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.0.0 dist/*.exe \
+            --title "ClearKey Player (Windows) v1.0.0" \
+            --notes "Windows desktop build (Electron). Add a Stremio add-on, browse it, and play HLS / DASH / DASH+ClearKey via Shaka Player + EME. ClearKeyPlayer-Setup-*.exe is the installer; ClearKeyPlayer-Portable-*.exe runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
