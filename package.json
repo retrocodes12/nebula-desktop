@@ -1,0 +1,44 @@
+{
+  "name": "clearkey-player",
+  "version": "1.0.0",
+  "description": "ClearKey Player — add a Stremio add-on, browse it, and play HLS / DASH / DASH+ClearKey.",
+  "main": "main.js",
+  "author": "Nuvio ClearKey",
+  "license": "GPL-3.0",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --publish never"
+  },
+  "devDependencies": {
+    "electron": "^31.7.6",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.nuvio.clearkey.player",
+    "productName": "ClearKey Player",
+    "files": [
+      "main.js",
+      "renderer/**/*"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "ClearKeyPlayer-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "ClearKeyPlayer-Portable-${version}.exe"
+    }
+  }
+}
