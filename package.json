@@ -1,6 +1,6 @@
 {
   "name": "clearkey-player",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "ClearKey Player — add a Stremio add-on, browse it, and play HLS / DASH / DASH+ClearKey.",
   "main": "main.js",
   "author": "Nuvio ClearKey",
@@ -15,7 +15,7 @@
   },
   "build": {
     "appId": "com.nuvio.clearkey.player",
-    "productName": "ClearKey Player",
+    "productName": "Nebula",
     "files": [
       "main.js",
       "renderer/**/*"
@@ -35,10 +35,10 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "ClearKeyPlayer-Setup-${version}.${ext}"
+      "artifactName": "Nebula-Setup-${version}.${ext}"
     },
     "portable": {
-      "artifactName": "ClearKeyPlayer-Portable-${version}.exe"
+      "artifactName": "Nebula-Portable-${version}.exe"
     }
   }
 }

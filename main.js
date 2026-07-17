@@ -44,7 +44,7 @@ async function createWindow() {
     minHeight: 600,
     backgroundColor: '#000000',
     autoHideMenuBar: true,
-    title: 'ClearKey Player',
+    title: 'Nebula',
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

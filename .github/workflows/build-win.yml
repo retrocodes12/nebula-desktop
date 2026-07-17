@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.1.0 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.1.0 dist/*.exe \
-            --title "ClearKey Player (Windows) v1.1.0" \
-            --notes "Windows desktop build (Electron). Add a Stremio add-on, browse it, and play HLS / DASH / DASH+ClearKey via Shaka Player + EME. ClearKeyPlayer-Setup-*.exe is the installer; ClearKeyPlayer-Portable-*.exe runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          gh release delete v1.2.0 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.2.0 dist/*.exe \
+            --title "Nebula (Windows) v1.2.0" \
+            --notes "Windows desktop build (Electron). Add a Stremio add-on, browse it, and play HLS / DASH / DASH+ClearKey via Shaka Player + EME. Nebula-Setup-*.exe is the installer; Nebula-Portable-*.exe runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
