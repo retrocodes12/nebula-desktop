@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.2.2 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.2.2 dist/*.exe \
-            --title "Nebula (Windows) v1.2.2" \
-            --notes "Repo renamed to nebula-desktop; QR pairing page moved to retrocodes12.github.io/nebula-player/pair.html. Artifacts now have stable names (Nebula-Portable.exe / Nebula-Setup.exe) so releases/latest/download links always fetch the newest build. Add a Stremio add-on, browse it, and play HLS / DASH / DASH+ClearKey via Shaka Player + EME. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          gh release delete v1.3.0 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.3.0 dist/*.exe \
+            --title "Nebula (Windows) v1.3.0" \
+            --notes "Adds catalog search (search bar on searchable catalogs) and an in-app update nudge. Artifacts have stable names (Nebula-Portable.exe / Nebula-Setup.exe) so releases/latest/download links always fetch the newest build. Add an add-on, browse it, and play — plays and decrypts every format. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
