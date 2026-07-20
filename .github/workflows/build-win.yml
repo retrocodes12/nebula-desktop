@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.4.1 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.4.1 dist/*.exe \
-            --title "Nebula (Windows) v1.4.1" \
-            --notes "Your saved add-ons are now mirrored to a second storage layer and auto-restored if the primary one is ever cleared (fixes add-ons disappearing on webOS TVs; harmless belt-and-braces on Windows). Also includes the quality picker from v1.4.0. Artifacts have stable names (Nebula-Portable.exe / Nebula-Setup.exe) so releases/latest/download links always fetch the newest build. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          gh release delete v1.4.2 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.4.2 dist/*.exe \
+            --title "Nebula (Windows) v1.4.2" \
+            --notes "Shared-player sync release: adds the TV-mode layout used on webOS (inactive on Windows — the desktop UI is unchanged). Includes the quality picker and add-on storage mirroring from earlier releases. Artifacts have stable names (Nebula-Portable.exe / Nebula-Setup.exe) so releases/latest/download links always fetch the newest build. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
