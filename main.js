@@ -54,9 +54,19 @@ async function createWindow() {
   win.setMenuBarVisibility(false);
   // Open external links (e.g. the phone-pairing page) in the OS browser.
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
+  // The window must only ever show the local player — send any in-window
+  // navigation attempt to the OS browser instead.
+  win.webContents.on('will-navigate', (event, url) => {
+    if (!url.startsWith(`http://127.0.0.1:${port}/`)) {
+      event.preventDefault();
+      shell.openExternal(url);
+    }
+  });
   win.loadURL(`http://127.0.0.1:${port}/index.html`);
 }
 
 app.whenReady().then(createWindow);
+// Without this, closing the window leaves Nebula (and its local server) running forever.
+app.on('window-all-closed', () => app.quit());
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 app.on('window-all-closed', () => app.quit());
