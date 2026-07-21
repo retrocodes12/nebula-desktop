@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.5.1 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.5.1 dist/*.exe \
-            --title "Nebula (Windows) v1.5.1" \
-            --notes "Cleaner, flatter design: solid dark surfaces, white focus rings, red used sparingly. Same Stremio-style layout. Artifacts have stable names (Nebula-Portable.exe / Nebula-Setup.exe) so releases/latest/download links always fetch the newest build. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          gh release delete v1.5.2 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.5.2 dist/*.exe \
+            --title "Nebula (Windows) v1.5.2" \
+            --notes "Stream add-ons now work: opening an item asks every installed add-on that serves streams for it (Stremio semantics), grouped per add-on. Artifacts have stable names (Nebula-Portable.exe / Nebula-Setup.exe) so releases/latest/download links always fetch the newest build. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
