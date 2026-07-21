@@ -1,6 +1,6 @@
 {
   "name": "clearkey-player",
-  "version": "1.4.3",
+  "version": "1.5.0",
   "description": "ClearKey Player — add a Stremio add-on, browse it, and play HLS / DASH / DASH+ClearKey.",
   "main": "main.js",
   "author": "Nuvio ClearKey",

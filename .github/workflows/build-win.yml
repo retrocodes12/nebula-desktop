@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.4.3 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.4.3 dist/*.exe \
-            --title "Nebula (Windows) v1.4.3" \
-            --notes "A brand-new look for the player: nebula-glow backdrop, glassy panels, gradient buttons, and richer poster/stream cards with glowing focus. Same features underneath (quality picker, search, add-on mirroring). Artifacts have stable names (Nebula-Portable.exe / Nebula-Setup.exe) so releases/latest/download links always fetch the newest build. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          gh release delete v1.5.0 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.5.0 dist/*.exe \
+            --title "Nebula (Windows) v1.5.0" \
+            --notes "Stremio-style layout: a nav rail with Home / Search / Add-ons. Home shows every added add-on as poster rows the moment the app opens, Search runs one query across all add-ons, and add-on management has its own tab. Artifacts have stable names (Nebula-Portable.exe / Nebula-Setup.exe) so releases/latest/download links always fetch the newest build. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
