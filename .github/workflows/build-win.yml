@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.4.2 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.4.2 dist/*.exe \
-            --title "Nebula (Windows) v1.4.2" \
-            --notes "Shared-player sync release: adds the TV-mode layout used on webOS (inactive on Windows — the desktop UI is unchanged). Includes the quality picker and add-on storage mirroring from earlier releases. Artifacts have stable names (Nebula-Portable.exe / Nebula-Setup.exe) so releases/latest/download links always fetch the newest build. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          gh release delete v1.4.3 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.4.3 dist/*.exe \
+            --title "Nebula (Windows) v1.4.3" \
+            --notes "A brand-new look for the player: nebula-glow backdrop, glassy panels, gradient buttons, and richer poster/stream cards with glowing focus. Same features underneath (quality picker, search, add-on mirroring). Artifacts have stable names (Nebula-Portable.exe / Nebula-Setup.exe) so releases/latest/download links always fetch the newest build. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
