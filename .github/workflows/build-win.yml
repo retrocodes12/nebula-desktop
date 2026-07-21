@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.6.0 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.6.0 dist/*.exe \
-            --title "Nebula (Windows) v1.6.0" \
-            --notes "A real player UI: play/pause and +/-10s transport, seek bar with buffering and live-DVR support, and menus for Subtitles (including add-on-provided subtitle files), Audio language, Quality, and Speed. Artifacts have stable names (Nebula-Portable.exe / Nebula-Setup.exe) so releases/latest/download links always fetch the newest build. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          gh release delete v1.6.1 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.6.1 dist/*.exe \
+            --title "Nebula (Windows) v1.6.1" \
+            --notes "Stability fixes from a full code review, including: the app now exits properly when you close the window, Backspace works in text fields, and stale search/catalog results can no longer overwrite fresh ones. Artifacts have stable names (Nebula-Portable.exe / Nebula-Setup.exe) so releases/latest/download links always fetch the newest build. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
