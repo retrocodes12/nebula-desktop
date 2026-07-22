@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.6.1 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.6.1 dist/*.exe \
-            --title "Nebula (Windows) v1.6.1" \
-            --notes "Stability fixes from a full code review, including: the app now exits properly when you close the window, Backspace works in text fields, and stale search/catalog results can no longer overwrite fresh ones. Artifacts have stable names (Nebula-Portable.exe / Nebula-Setup.exe) so releases/latest/download links always fetch the newest build. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          gh release delete v1.7.0 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.7.0 dist/*.exe \
+            --title "Nebula (Windows) v1.7.0" \
+            --notes "New: Mini player — the Mini button in the player shrinks Nebula to a small always-on-top window in the corner, perfect for keeping a match visible while you work; Exit mini restores the window exactly as it was. Also adds Picture-in-picture (video-only floating window) via the PiP button. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
