@@ -1,4 +1,4 @@
-const { app, BrowserWindow, session, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, session, shell } = require('electron');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -46,6 +46,7 @@ async function createWindow() {
     autoHideMenuBar: true,
     title: 'Nebula',
     webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
       backgroundThrottling: false,
@@ -62,6 +63,33 @@ async function createWindow() {
       shell.openExternal(url);
     }
   });
+  // Mini player: shrink to an always-on-top window in the bottom-right corner
+  // (great for keeping a match visible while working); toggling off restores
+  // the exact previous bounds. Driven by the player UI via preload.js.
+  let savedBounds = null;
+  let savedMaximized = false;
+  ipcMain.removeHandler('mini-mode');
+  ipcMain.handle('mini-mode', (_event, on) => {
+    if (win.isDestroyed()) return;
+    if (on && !savedBounds) {
+      savedMaximized = win.isMaximized();
+      if (savedMaximized) win.unmaximize();
+      savedBounds = win.getBounds();
+      const wa = screen.getDisplayMatching(savedBounds).workArea;
+      const w = 480, h = 300;
+      win.setMinimumSize(320, 200);
+      win.setBounds({ x: wa.x + wa.width - w - 16, y: wa.y + wa.height - h - 16, width: w, height: h });
+      win.setAlwaysOnTop(true, 'floating');
+    } else if (!on && savedBounds) {
+      win.setAlwaysOnTop(false);
+      win.setMinimumSize(900, 600);
+      win.setBounds(savedBounds);
+      if (savedMaximized) win.maximize();
+      savedBounds = null;
+      savedMaximized = false;
+    }
+  });
+
   win.loadURL(`http://127.0.0.1:${port}/index.html`);
 }
 
@@ -69,4 +97,3 @@ app.whenReady().then(createWindow);
 // Without this, closing the window leaves Nebula (and its local server) running forever.
 app.on('window-all-closed', () => app.quit());
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
-app.on('window-all-closed', () => app.quit());
