@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.8.2 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.8.2 dist/*.exe \
-            --title "Nebula (Windows) v1.8.2" \
-            --notes "New: Watch parties. Play a stream and press Party to get a 5-letter code; friends enter it (Add-ons tab -> Join party) on any Nebula platform and everyone watches in sync — play, pause and seeking follow the host automatically. Also includes v1.7.0's Mini player (always-on-top corner window) and Picture-in-picture. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          gh release delete v1.9.0 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.9.0 dist/*.exe \
+            --title "Nebula (Windows) v1.9.0" \
+            --notes "New: series now have a season and episode picker — opening a series shows its seasons and episodes instead of jumping straight to streams; movies are unchanged. Includes watch parties, Mini player and Picture-in-picture. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
