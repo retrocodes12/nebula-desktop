@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.9.0 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.9.0 dist/*.exe \
-            --title "Nebula (Windows) v1.9.0" \
-            --notes "New: series now have a season and episode picker — opening a series shows its seasons and episodes instead of jumping straight to streams; movies are unchanged. Includes watch parties, Mini player and Picture-in-picture. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          gh release delete v1.9.1 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.9.1 dist/*.exe \
+            --title "Nebula (Windows) v1.9.1" \
+            --notes "Fix: live sports streams no longer die on a single bad segment — the player now recovers automatically (retries, then rejoins the live edge) instead of showing a playback error, and flaky CDNs get more retries. Includes the series episode picker, watch parties, Mini player and Picture-in-picture. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
