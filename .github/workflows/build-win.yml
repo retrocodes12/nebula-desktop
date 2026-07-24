@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.9.2 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.9.2 dist/*.exe \
-            --title "Nebula (Windows) v1.9.2" \
-            --notes "Fix: removed an over-aggressive playback auto-reload that could thrash (repeated reconnect + re-buffer) when a stream source was flaky; playback errors now surface cleanly, while flaky CDNs still get extra segment retries under the hood. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          gh release delete v1.9.3 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.9.3 dist/*.exe \
+            --title "Nebula (Windows) v1.9.3" \
+            --notes "Keeps the desktop app in sync with the shared player (this release mainly enlarges posters for the webOS TV build). Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
