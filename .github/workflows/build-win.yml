@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.9.3 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.9.3 dist/*.exe \
-            --title "Nebula (Windows) v1.9.3" \
-            --notes "Keeps the desktop app in sync with the shared player (this release mainly enlarges posters for the webOS TV build). Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          gh release delete v1.10.0 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.10.0 dist/*.exe \
+            --title "Nebula (Windows) v1.10.0" \
+            --notes "Nebula now remembers where you stopped. A Continue watching row on Home picks any half-finished film or episode back up at the second you left it, episodes show a tick when watched and a bar when part-way through, and a series keeps rolling on its own — the next episode is offered near the end and plays automatically when one finishes. Search now covers every searchable catalogue an add-on offers, so searching a show name finally returns shows and not just films. Catalogues load further pages as you scroll instead of stopping at the first hundred items. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
