@@ -227,12 +227,31 @@
   /* focus base */
   .focusable { outline:none; }
 
-  /* ---- skeleton loading ---- */
+  /* ---- skeleton loading ----
+     One shimmer for every placeholder shape, so a list that is loading reads the
+     same whether it is posters, streams or episodes. */
   .skel { pointer-events:none; }
-  .skel .thumb, .card-label.sk { background:linear-gradient(100deg,#16161c 30%,#1f1f27 50%,#16161c 70%);
+  .skel .thumb, .card-label.sk, .sk-line, .sk-box, .sk-blob {
+    background:linear-gradient(100deg,#16161c 30%,#1f1f27 50%,#16161c 70%);
     background-size:200% 100%; animation:sh 1.2s linear infinite; }
   .card-label.sk { height:.9em; border-radius:4px; margin:10px 2px; }
   @keyframes sh { to { background-position:-200% 0; } }
+  /* row-shaped skeletons: a leading shape plus two text lines */
+  .stream.skel { border-color:var(--line); }
+  .sk-lines { flex:1; min-width:0; }
+  .sk-line { display:block; height:.85em; border-radius:4px; }
+  .sk-line + .sk-line { margin-top:9px; }
+  .sk-line.short { width:42%; }
+  .sk-blob { width:42px; height:42px; flex:0 0 auto; border-radius:50%; }
+  .sk-box { width:112px; height:63px; flex:0 0 auto; border-radius:8px; }
+  html.tv .sk-blob { width:56px; height:56px; }
+  html.tv .sk-box { width:168px; height:95px; }
+  .sk-head { height:1.05em; width:190px; border-radius:4px; margin:20px 0 10px; }
+  /* Motion is decoration here — the layout already communicates "loading". */
+  @media (prefers-reduced-motion: reduce){
+    .skel .thumb, .card-label.sk, .sk-line, .sk-box, .sk-blob, .sk-head {
+      animation:none; background:var(--surface2); }
+  }
 
   /* ---- status toast ---- */
   #status { position:fixed; left:50%; bottom:22px; transform:translate(-50%,150%); z-index:6;
@@ -569,7 +588,7 @@
   var statusEl = document.getElementById('status');
   var LS = window.localStorage;
   var player = null, viewStack = ['home'], ctx = {};
-  var PLAYER_VERSION = '2026.08.11';
+  var PLAYER_VERSION = '2026.08.11.1';
 
   // TV mode: 10-foot sizing on webOS (PalmSystem/ServiceBridge only exist there);
   // ?tv=1 forces it anywhere for previewing.
@@ -1147,6 +1166,20 @@
     var s=''; for(var i=0;i<n;i++) s+='<div class="card skel"><div class="thumb"></div><div class="card-label sk"></div></div>';
     return s;
   }
+  /** Placeholder rows shaped like the stream cards they stand in for. */
+  function streamSkeletons(n){
+    var s='';
+    for(var i=0;i<n;i++) s+='<div class="stream skel"><span class="sk-blob"></span>' +
+      '<span class="sk-lines"><span class="sk-line"></span><span class="sk-line short"></span></span></div>';
+    return s;
+  }
+  /** Same, with an episode thumbnail instead of the play disc. */
+  function episodeSkeletons(n){
+    var s='';
+    for(var i=0;i<n;i++) s+='<div class="stream skel"><span class="sk-box"></span>' +
+      '<span class="sk-lines"><span class="sk-line"></span><span class="sk-line short"></span></span></div>';
+    return s;
+  }
   /** Poster card. When (a, m, c) are given, clicking first points ctx at that
       addon/catalog (cards on Home and Search live outside the catalog view). */
   function cardEl(meta, a, m, c){
@@ -1177,11 +1210,27 @@
     }
     var seq = catSeq;
     catPaging = true;
+    // while a further page is in flight, tail the grid with placeholders — added
+    // as direct children so they sit in the grid without a wrapper
+    if (more){
+      var frag = document.createElement('div');
+      frag.innerHTML = skeletons(6);
+      Array.prototype.slice.call(frag.children).forEach(function(c){
+        c.className += ' pageskel';
+        list.appendChild(c);
+      });
+    }
+    function dropPageSkel(){
+      Array.prototype.slice.call(list.querySelectorAll('.pageskel')).forEach(function(el){
+        if (el.parentNode) el.parentNode.removeChild(el);
+      });
+    }
     try {
       var d = await getJson(catalogUrl(more ? catFetched : 0));
-      if (seq !== catSeq) return;
+      if (seq !== catSeq) { dropPageSkel(); return; }
       var metas = d.metas||[];
       catFetched += metas.length;
+      dropPageSkel();
       if (!more) list.innerHTML='';
       var added = 0;
       metas.forEach(function(meta){
@@ -1207,6 +1256,7 @@
         if (sc && sc.scrollHeight <= sc.clientHeight + 40) loadCatalog(true);
       }, 0);
     } catch(err){
+      dropPageSkel();
       if (seq !== catSeq) return;
       catDone = true;
       if (more){ setStatus('Couldn’t load more.','err'); }
@@ -1352,6 +1402,12 @@
     var addons = getAddons();
     if (!addons.length){ wrap.innerHTML='<div class="empty">Add an add-on first — then one search covers everything it has.</div>'; return; }
     setStatus('Searching…','info');
+    // stand-in section until the first add-on answers
+    wrap.innerHTML = '<div id="searchSkel"><div class="sk-head"></div><div class="grid">' + skeletons(8) + '</div></div>';
+    function dropSearchSkel(){
+      var sk = document.getElementById('searchSkel');
+      if (sk && sk.parentNode) sk.parentNode.removeChild(sk);
+    }
     var any = false, pending = 0;
     addons.forEach(function(a){
       pending++;
@@ -1379,7 +1435,7 @@
               var key = (meta.type||c.type) + ':' + meta.id;
               if (seen[key]) return;                 // same title from two catalogs
               seen[key] = 1;
-              if (!shown){ wrap.appendChild(head); wrap.appendChild(g); shown = true; any = true; }
+              if (!shown){ dropSearchSkel(); wrap.appendChild(head); wrap.appendChild(g); shown = true; any = true; }
               count++;
               g.appendChild(cardEl(meta, a, m, c));
             });
@@ -1389,6 +1445,7 @@
       }).catch(function(){}).then(function(){
         pending--;
         if (!pending && seq === searchSeq){
+          dropSearchSkel();
           if (!any) wrap.innerHTML = '<div class="empty">No matches for “'+esc(q)+'”.</div>';
           setStatus(any ? 'Here\'s what matched.' : 'No matches.', any ? 'ok' : 'info');
         }
@@ -1481,7 +1538,7 @@
     var seq = ++seriesSeq;
     document.getElementById('epTitle').textContent = meta.name || 'Episodes';
     document.getElementById('seasonRow').innerHTML = '';
-    document.getElementById('epList').innerHTML = '<div class="empty">Loading episodes…</div>';
+    document.getElementById('epList').innerHTML = episodeSkeletons(6);
     show('episodes'); setStatus('Loading episodes…','info');
     var res = await fetchSeriesVideos(type, meta.id, seq);
     if (seq !== seriesSeq) return;
@@ -1591,7 +1648,7 @@
     setPlayIdentity(type, id, titleText);
     document.getElementById('streamsTitle').textContent = titleText || 'Streams';
     var list = document.getElementById('streamList');
-    list.innerHTML = '<div class="empty" id="streamsLoading">Loading streams…</div>';
+    list.innerHTML = '<div class="streamsec" id="streamsLoading">' + streamSkeletons(4) + '</div>';
     list.parentNode.scrollTop = 0;
     show('streams'); setStatus('Loading streams…','info');
 
@@ -1622,14 +1679,23 @@
     // one placeholder per add-on, filled as answers arrive, so order is stable
     order.forEach(function(a){
       var box = document.createElement('div'); box.className='streamsec'; list.appendChild(box);
+      // an add-on that will be asked shows skeleton rows until it answers
+      // (named to avoid shadowing the outer `pending` counter that done() uses)
+      var boxPending = false;
       getManifest(a.url).then(function(m){
         // the origin add-on is always asked; others only when their manifest
         // says they serve streams for this item's type/id
         if (!(origin && a.url === origin.url) && !canStream(m, type, id)) return;
+        if (seq !== openSeq) return;
+        boxPending = true;
+        removeLoading();                       // this add-on's own rows stand in now
+        box.innerHTML = streamSkeletons(3);
         var u = a.base + '/stream/' + encodeURIComponent(type) + '/' + encodeURIComponent(id) + '.json';
         return getJson(u).then(function(d){
           if (seq !== openSeq) return;
           var streams = (d.streams||[]).filter(function(s){ return s.url; });
+          box.innerHTML = '';
+          boxPending = false;
           if (!streams.length) return;
           removeLoading();
           sections++;
@@ -1639,7 +1705,10 @@
           streams.forEach(function(s){ total++; box.appendChild(streamCard(s)); });
           if (sections === 1) focusFirst();
         });
-      }).catch(function(){ failures++; }).then(done);
+      }).catch(function(){
+        failures++;
+        if (boxPending){ box.innerHTML = ''; boxPending = false; }   // never leave it shimmering
+      }).then(done);
     });
   }
 
