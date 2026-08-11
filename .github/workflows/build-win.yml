@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.10.1 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.10.1 dist/*.exe \
-            --title "Nebula (Windows) v1.10.1" \
-            --notes "Lists now show placeholder rows while they load instead of a line of text — streams, episodes, search results and further catalogue pages all fill in the shape of what is coming. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          gh release delete v1.11.0 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.11.0 dist/*.exe \
+            --title "Nebula (Windows) v1.11.0" \
+            --notes "A new look. Nebula now uses an Apple-style interface — layered surfaces over a true-black ground, a translucent top bar, soft rounded artwork, and a highlight that lifts and enlarges what you are pointing at instead of drawing a box around it. Underneath: it remembers where you stopped, with a Continue Watching row that picks any half-finished film or episode back up at the second you left it; episodes show a tick when watched and a bar when part-way; a series keeps rolling on its own, offering the next episode near the end and playing it automatically when one finishes. Search now covers every searchable catalogue an add-on offers, so searching a show name returns shows and not just films. Catalogues load further pages as you scroll instead of stopping at the first hundred items, and lists show placeholder rows while they load. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
