@@ -333,6 +333,15 @@
   code { font-family:var(--mono); background:var(--l2); color:var(--label); padding:.14rem .4rem;
     border-radius:6px; font-size:.86em; }
 
+  /* Subtitle cues render natively at the very bottom of the video, which is
+     exactly where the control bar sits — lift them while the chrome is up.
+     Blink-only pseudo-element, so it's simply inert anywhere it isn't supported.
+     (applySubStyle() re-emits these three rules with the user's own offset added;
+     the static copies are the pre-script fallback.) */
+  video::-webkit-media-text-track-container { transition:transform .28s var(--ease); }
+  body.pui-on video::-webkit-media-text-track-container { transform:translateY(-104px); }
+  html.tv body.pui-on video::-webkit-media-text-track-container { transform:translateY(-152px); }
+
   /* ---- player chrome ---- */
   #pui { position:fixed; top:0; left:0; right:0; bottom:0; z-index:5; display:none; }
   body.playing #pui { display:block; }
@@ -406,6 +415,17 @@
   .qopt.focusable:focus { background:rgba(255,255,255,.16); box-shadow:0 0 0 3px rgba(255,255,255,.35); }
   .qopt.on { font-weight:600; }
   .qopt.on::after { content:' ✓'; color:var(--label2); }
+  .qsep { height:1px; margin:7px 12px; background:rgba(255,255,255,.14); }
+  .qnote { color:var(--label2); font-size:12.5px; line-height:1.45; padding:7px 12px 9px;
+    white-space:normal; max-width:250px; }
+  /* subtitle appearance: setting rows that cycle their value, over a live sample */
+  .qmenu.wide { min-width:292px; max-height:74vh; }
+  .qset { display:flex; justify-content:space-between; align-items:center; }
+  .qset .qv { color:var(--label2); font-weight:500; margin-left:18px; white-space:nowrap; }
+  .qset:hover .qv, .qset.focusable:focus .qv { color:var(--label); }
+  .qprev { margin:2px 6px 8px; padding:16px 10px; border-radius:10px; text-align:center; overflow:hidden;
+    background:linear-gradient(135deg,#55658a 0%,#1f2b47 55%,#0b0f1c 100%); }
+  .qprev-t { display:inline-block; padding:.06em .3em; line-height:1.3; border-radius:2px; white-space:normal; }
 
   /* ---- up next ---- */
   #upnext { display:none; position:absolute; right:30px; bottom:120px; z-index:7; width:352px; max-width:72vw;
@@ -425,8 +445,52 @@
   .upnext-row .btn { padding:10px 18px; font-size:13.5px; }
   html.tv #upnext { width:470px; right:40px; bottom:150px; padding:26px; }
 
+  /* ---- detail (meta) view: info column left, artwork right — 40/60 ---- */
+  .det { display:flex; align-items:flex-start; }
+  .det-info { flex:0 0 42%; min-width:0; padding-right:40px; }
+  .det-art { flex:1 1 58%; min-width:0; position:relative; border-radius:var(--r-tile); overflow:hidden;
+    background:var(--l1); box-shadow:inset 0 0 0 1px rgba(255,255,255,.08); }
+  .det-art::before { content:''; display:block; padding-top:56.25%; }
+  .det-art img { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; display:block; }
+  .det-art .thumb-ph { font-size:34px; }
+  .det-kicker { color:var(--label2); font-size:12px; font-weight:600; letter-spacing:.12em;
+    text-transform:uppercase; margin:2px 0 10px; }
+  .det-kicker b { color:var(--label); font-weight:600; }
+  .det-desc { color:var(--label2); font-size:15px; line-height:1.6; margin:14px 0 6px; max-width:56ch;
+    display:-webkit-box; -webkit-line-clamp:7; -webkit-box-orient:vertical; overflow:hidden; }
+  .btn .btn-ic { display:inline-block; vertical-align:-2px; margin-right:8px; }
+  .btn .btn-ic svg { width:13px; height:13px; display:block; }
+  html.tv .det-info { padding-right:56px; }
+  html.tv .det-kicker { font-size:16px; }
+  html.tv .det-desc { font-size:19px; }
+  html.tv .btn .btn-ic svg { width:16px; height:16px; }
+
+  /* ---- library ---- */
+  #libGrid { margin-top:14px; }
+  .up-day { color:var(--label2); font-size:12px; font-weight:600; letter-spacing:.12em;
+    text-transform:uppercase; margin:24px 0 10px; }
+  .up-day:first-child { margin-top:8px; }
+  #upcomingList .stream-sub { margin-top:2px; }
+  .up-poster { width:44px; height:66px; flex:0 0 auto; border-radius:8px; object-fit:cover; background:var(--l2); display:block; }
+  .up-poster.ph { display:flex; align-items:center; justify-content:center; color:var(--label3);
+    font-size:13px; font-weight:600; }
+  .up-tag { font-family:var(--mono); color:var(--label2); font-size:12.5px; letter-spacing:0; margin-right:8px; }
+  html.tv .up-day { font-size:15px; }
+  html.tv .up-poster { width:60px; height:90px; }
+  html.tv .up-tag { font-size:16px; }
+
+  /* ---- sync panel ---- */
+  .sync-code { font-family:var(--mono); font-size:34px; letter-spacing:.34em; padding:18px 10px 18px 24px;
+    margin-top:16px; text-align:center; background:var(--l2); border-radius:var(--r-ctl); color:var(--label); }
+  .sync-hint { color:var(--label3); font-size:12.5px; margin-top:8px; text-align:center; }
+  html.tv .sync-code { font-size:44px; }
+  html.tv .sync-hint { font-size:15px; }
+
   /* ---- phones ---- */
   @media (max-width:700px){
+    .det { flex-direction:column-reverse; }
+    .det-info { flex:none; padding:18px 0 0; }
+    .det-art { width:100%; flex:none; }
     :root { --navh:54px; }
     .rail-brand { margin-right:14px; font-size:15px; }
     .navitem { padding:6px 11px; font-size:13px; }
@@ -477,6 +541,7 @@
   html.tv .qmenu { min-width:300px; top:66px; }
   html.tv .qopt { font-size:19px; padding:12px 16px; }
   html.tv .qtitle { font-size:15px; }
+  html.tv .qmenu.wide { min-width:392px; }
   html.tv .pui-top { padding:34px 44px; }
   html.tv .pui-title { font-size:32px; }
   html.tv .pui-bottom { padding:0 44px 36px; }
@@ -540,6 +605,7 @@
         <button id="puiParty" class="focusable pui-btn" title="Watch party — watch together in sync">Party</button>
         <button id="puiPip" class="focusable pui-btn" style="display:none" title="Picture-in-picture">PiP</button>
         <button id="puiMini" class="focusable pui-btn" style="display:none" title="Mini player — small window that stays on top">Mini</button>
+        <button id="puiFull" class="focusable pui-btn" style="display:none" title="Fullscreen (f)">Fullscreen</button>
       </div>
     </div>
     <div id="puiMenu" class="qmenu"></div>
@@ -564,6 +630,9 @@
     <button id="navSearch" class="navitem focusable" data-tab="search" title="Search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/></svg>
       <span>Search</span></button>
+    <button id="navLibrary" class="navitem focusable" data-tab="library" title="Library">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12a1 1 0 0 1 1 1v15l-7-4-7 4V5a1 1 0 0 1 1-1Z"/></svg>
+      <span>Library</span></button>
     <button id="navAddons" class="navitem focusable" data-tab="addons" title="Add-ons">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg>
       <span>Add-ons</span></button>
@@ -585,6 +654,29 @@
     <div id="searchResults"></div>
   </div>
 
+  <!-- LIBRARY: My List + upcoming episodes -->
+  <div id="view-library" class="view">
+    <div class="page-title">Library</div>
+    <div id="libraryBody"></div>
+  </div>
+
+  <!-- DETAIL: one title — art, facts, actions -->
+  <div id="view-detail" class="view">
+    <div class="topbar"><button class="focusable iconbtn" data-back title="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button><div class="topbar-title" id="detTitle">Details</div></div>
+    <div class="det">
+      <div class="det-info">
+        <div class="det-kicker" id="detMeta"></div>
+        <p class="det-desc" id="detDesc"></p>
+        <div class="row">
+          <button id="detPlay" class="focusable btn"><span class="btn-ic"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></span><span id="detPlayLbl">Play</span></button>
+          <button id="detEpisodes" class="focusable btn ghost" style="display:none">Episodes</button>
+          <button id="detList" class="focusable btn ghost">My List</button>
+        </div>
+      </div>
+      <div class="det-art" id="detArt"></div>
+    </div>
+  </div>
+
   <!-- ADD-ONS: manage sources -->
   <div id="view-addons" class="view">
     <div class="page-title">Add-ons</div>
@@ -596,6 +688,25 @@
         <button id="phoneBtn" class="focusable btn">Add via phone</button>
         <button id="addAddonBtn" class="focusable btn ghost">Add typed URL</button>
         <button id="manualBtn" class="focusable btn ghost">Play a URL</button>
+        <button id="fileBtn" class="focusable btn ghost">Play a file</button>
+        <input id="filePick" type="file" accept="video/*,.mkv,.mp4,.webm,.m4v,.mov" style="display:none">
+      </div>
+    </div>
+    <div class="panel" id="syncPanel">
+      <div class="lbl">Sync between devices</div>
+      <p class="sub" id="syncStatus" style="margin:8px 0 0">Add-ons, progress and your list stay on this device until you link another.</p>
+      <div class="row" id="syncUnlinked">
+        <button id="syncStart" class="focusable btn">Start syncing</button>
+        <input id="syncCodeIn" class="focusable field" type="text" placeholder="Code from another device" autocomplete="off" maxlength="8" style="flex:1" />
+        <button id="syncJoinBtn" class="focusable btn ghost">Link</button>
+      </div>
+      <div class="row" id="syncLinked" style="display:none">
+        <button id="syncShowCode" class="focusable btn">Link another device</button>
+        <button id="syncLeave" class="focusable btn ghost">Stop syncing</button>
+      </div>
+      <div id="syncCodeBox" style="display:none">
+        <div class="sync-code" id="syncCodeText"></div>
+        <div class="sync-hint" id="syncCodeHint"></div>
       </div>
     </div>
     <div class="panel" id="partyPanel">
@@ -669,7 +780,27 @@
   var statusEl = document.getElementById('status');
   var LS = window.localStorage;
   var player = null, viewStack = ['home'], ctx = {};
-  var PLAYER_VERSION = '2026.08.11.2';
+  var PLAYER_VERSION = '2026.08.31.1';
+
+  // Where our own site files (pair.html, party.json, player-version.json) live.
+  // Served over http(s) the player is self-contained — any mirror works from its
+  // own origin; from file:// (the packaged webOS app) it uses the published site.
+  var GH_SITE = 'https://retrocodes12.github.io/nebula-player';
+  var HTTP_ORIGIN = /^https?:$/.test(location.protocol) ? location.origin : null;
+  // The site root is the directory ABOVE the /player/ dir this file serves from
+  // — bare origin is wrong on project-page hosting (github.io serves the site
+  // under /nebula-player/, not at the origin root).
+  var SITE = GH_SITE;
+  if (HTTP_ORIGIN){
+    var sitePath = location.pathname
+      .replace(/\/player(\/(index\.html)?)?$/, '/')   // …/player/ → …/
+      .replace(/[^/]*$/, '');                          // any filename → its directory
+    SITE = HTTP_ORIGIN + sitePath.replace(/\/$/, '');
+  }
+  // Sync + CORS-rescue service. GitHub Pages can't host it, so anything not
+  // running on our own deployment talks to the canonical one.
+  var CLOUD_BASE = (HTTP_ORIGIN && !/github\.io$/i.test(location.hostname))
+    ? HTTP_ORIGIN + '/cloud' : 'https://play.rifflehq.in/cloud';
 
   // TV mode: 10-foot sizing on webOS (PalmSystem/ServiceBridge only exist there);
   // ?tv=1 forces it anywhere for previewing.
@@ -698,11 +829,14 @@
     if (el){ el.classList.add('active'); if (!back) el.scrollTop = 0; }
     // cheap and synchronous — keeps Continue watching honest after playback
     if (name === 'home'){ try { renderContinue(); } catch(e){} }
+    if (name === 'library'){ try { renderLibraryTab(); } catch(e){} }
+    // coming back to a title after watching: the Resume label must be current
+    if (name === 'detail' && detCur){ try { syncDetButtons(); } catch(e){} }
     video.style.display = (name==='player') ? 'block' : 'none';
     document.body.classList.toggle('playing', name==='player');
     if (push !== false){ if (viewStack[viewStack.length-1] !== name) viewStack.push(name); }
     // light up the rail item for whichever tab this stack is rooted in
-    var tabs = { home:'navHome', search:'navSearch', addons:'navAddons' };
+    var tabs = { home:'navHome', search:'navSearch', library:'navLibrary', addons:'navAddons' };
     Object.keys(tabs).forEach(function(t){
       var b = document.getElementById(tabs[t]); if (b) b.classList.toggle('on', viewStack[0]===t);
     });
@@ -777,10 +911,14 @@
       var isBack = (k===461 || k===8 || e.key==='GoBack' || e.key==='BrowserBack');
       if (isBack){
         if (upnextState.open){ dismissUpNext(); }
+        else if (puiState.menu==='substyle'){ openPuiMenu('subs', puiState.opener); }
         else if (puiState.menu){ closePuiMenu(true); }
         else if (pui.className !== 'idle'){ puiIdle(); }
         else { goBack(); }
         e.preventDefault(); return;
+      }
+      if (k===70 && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey){
+        toggleFullscreen(); e.preventDefault(); return;
       }
       // while the up-next card is up it owns left/right and OK
       if (upnextState.open){
@@ -797,7 +935,11 @@
         if (k===38){ movePuiMenu(-1); e.preventDefault(); }
         else if (k===40){ movePuiMenu(1); e.preventDefault(); }
         else if (k===13){ var a=document.activeElement; if(a&&a.classList.contains('qopt')) a.click(); e.preventDefault(); }
-        else if (k===37||k===39){ e.preventDefault(); }
+        else if (k===37||k===39){
+          var sr = document.activeElement;
+          if (sr && sr.classList.contains('qset')) subCycle(sr.getAttribute('data-key'), k===39 ? 1 : -1);
+          e.preventDefault();
+        }
         return;
       }
       if (pui.className === 'idle'){
@@ -841,9 +983,12 @@
   // whenever localStorage comes up empty. On web/desktop the DB8 calls no-op.
   function getAddons(){ try { return JSON.parse(LS.getItem('addons')||'[]'); } catch(e){ return []; } }
   function saveAddons(a){
+    var prev = getAddons();                    // still the stored copy at this point
     var json = JSON.stringify(a);
     try { LS.setItem('addons', json); } catch(e){}
     mirrorAddons(json);
+    syncNoteAddonsDiff(prev, a);
+    cloudPushSoon('addons');
     manifestCache = {};                        // a changed add-on list invalidates cached manifests
     try { buildHomeRows(true); } catch(e){}   // any add-on change reshapes Home
   }
@@ -932,9 +1077,15 @@
       .then(function(v){
         if (!v) return;
         var arr = null; try { arr = JSON.parse(v); } catch(e){}
-        if (arr && arr.length){
-          saveAddons(arr); renderAddons();
-          setStatus('Restored your saved add-ons.','ok'); focusFirst();
+        if (!arr || !arr.length) return;
+        // union with whatever was added while the restore was in flight
+        var now = getAddons(), merged = now.slice();
+        arr.forEach(function(a){
+          if (a && a.url && !merged.some(function(c){ return c.url === a.url; })) merged.push(a);
+        });
+        if (merged.length !== now.length){
+          saveAddons(merged); renderAddons();
+          if (!now.length){ setStatus('Restored your saved add-ons.','ok'); focusFirst(); }
         }
       });
   }
@@ -948,11 +1099,15 @@
       .then(function(v){
         if (!v) return;
         var obj = null; try { obj = JSON.parse(v); } catch(e){}
-        if (obj && Object.keys(obj).length){
-          progCache = obj;
-          try { LS.setItem('progress', v); } catch(e){}
-          renderContinue();
-        }
+        if (!obj || !Object.keys(obj).length) return;
+        // merge, newest-wins — playback may already have written fresh
+        // positions while the mirror was being read
+        var now = getProgress(), changed = false;
+        Object.keys(obj).forEach(function(k){
+          var r = obj[k], l = now[k];
+          if (r && (!l || (r.at||0) > (l.at||0))){ now[k] = r; changed = true; }
+        });
+        if (changed){ progCache = now; saveProgress(true); renderContinue(); }
       });
   }
   // ---------- watch progress (resume + continue watching) ----------
@@ -977,7 +1132,9 @@
     var json = JSON.stringify(p);
     try { LS.setItem('progress', json); } catch(e){}
     // the mirrors are comparatively expensive: on demand, else at most every 30s
-    if (mirrorNow || Date.now() - progMirrorAt > 30000){ progMirrorAt = Date.now(); mirrorKv('progress', json); }
+    if (mirrorNow || Date.now() - progMirrorAt > 30000){
+      progMirrorAt = Date.now(); mirrorKv('progress', json); cloudPushSoon('progress');
+    }
   }
   function progKey(type, id){ return (type||'') + ':' + (id||''); }
   function progFor(type, id){ return getProgress()[progKey(type, id)] || null; }
@@ -1000,7 +1157,12 @@
       saveProgress(true); return;
     }
     if (pos < PROG_MIN_POS){                    // rewound to the top — forget it
-      if (p[k] && !p[k].done){ delete p[k]; saveProgress(false); }
+      // tombstone, not delete: a synced device still holding the old position
+      // would push the record straight back
+      if (p[k] && !p[k].done && !p[k].dismissed){
+        p[k] = { type: c.type, id: c.id, dismissed: true, at: Date.now() };
+        saveProgress(false);
+      }
       return;
     }
     p[k] = {
@@ -1019,8 +1181,10 @@
     if (mirror) saveProgress(true);
   }
   function clearProgress(type, id){
+    // A tombstone rather than a delete: a plain delete would be resurrected by
+    // the next sync pull from a device that still holds the old record.
     var p = getProgress(), k = progKey(type, id);
-    if (p[k]){ delete p[k]; saveProgress(true); }
+    if (p[k]){ p[k] = { type: type, id: id, dismissed: true, at: Date.now() }; saveProgress(true); }
   }
   /** Newest-first, only things actually worth resuming. */
   function continueList(){
@@ -1040,11 +1204,97 @@
     return hit;
   }
 
+  // ---------- library (My List) ----------
+  // One record per saved title, keyed "<type>:<id>". Removed items keep a
+  // {removed:true, at} tombstone so a removal beats a stale copy when devices
+  // sync. Rides the same storage mirrors as everything else.
+  var LIB_MAX = 500;
+  var libCache = null;
+  function getLibrary(){
+    if (libCache) return libCache;
+    try { libCache = JSON.parse(LS.getItem('library')||'{}') || {}; } catch(e){ libCache = {}; }
+    return libCache;
+  }
+  function saveLibrary(){
+    var L = getLibrary(), keys = Object.keys(L), now = Date.now();
+    // Tombstones are only purged under space pressure, and old ones first — a
+    // device offline for months may still hold the live record a tombstone
+    // exists to beat, and purging too eagerly lets that record resurrect.
+    if (keys.length > 200){
+      keys.forEach(function(k){ if (L[k].removed && now - (L[k].at||0) > 180*24*3600000) delete L[k]; });
+    }
+    var live = keys.filter(function(k){ return L[k] && !L[k].removed; });
+    if (live.length > LIB_MAX){
+      live.sort(function(a,b){ return (L[b].at||0) - (L[a].at||0); });
+      live.slice(LIB_MAX).forEach(function(k){ delete L[k]; });
+    }
+    var json = JSON.stringify(L);
+    try { LS.setItem('library', json); } catch(e){}
+    mirrorKv('library', json);
+    cloudPushSoon('library');
+  }
+  function inLibrary(type, id){
+    var r = getLibrary()[progKey(type, id)];
+    return !!(r && !r.removed);
+  }
+  function libraryList(){
+    var L = getLibrary(), out = [];
+    Object.keys(L).forEach(function(k){ var r = L[k]; if (r && !r.removed && r.id) out.push(r); });
+    out.sort(function(a,b){ return (b.at||0) - (a.at||0); });
+    return out;
+  }
+  function toggleLibrary(type, meta, addonUrl){
+    var L = getLibrary(), k = progKey(type, meta.id);
+    if (L[k] && !L[k].removed){
+      L[k] = { removed: true, at: Date.now() };
+      setStatus('Removed from My List.','info');
+    } else {
+      L[k] = { type: type, id: meta.id, name: meta.name||'', poster: meta.poster||'',
+        shape: meta.posterShape||'poster', addonUrl: addonUrl||'', at: Date.now() };
+      setStatus('Added to My List.','ok');
+    }
+    saveLibrary();
+    upcomingCache = { at: 0, rows: null };   // the upcoming list keys off the library
+  }
+  function initPersistentLibrary(){
+    var cur = getLibrary();
+    if (Object.keys(cur).length){ mirrorKv('library', JSON.stringify(cur)); return; }
+    idbLoad('library')
+      .then(function(v){ if (v) return v; return db8Load('library'); })
+      .then(function(v){
+        if (!v) return;
+        var obj = null; try { obj = JSON.parse(v); } catch(e){}
+        if (!obj || !Object.keys(obj).length) return;
+        // merge, newest-wins — the user may have touched My List while this
+        // restore was in flight, and a blind overwrite would eat that action
+        var now = getLibrary(), changed = false;
+        Object.keys(obj).forEach(function(k){
+          var r = obj[k], l = now[k];
+          if (r && (!l || (r.at||0) > (l.at||0))){ now[k] = r; changed = true; }
+        });
+        if (changed){ libCache = now; saveLibrary(); }
+      });
+  }
+
   function baseOf(manifestUrl){ return manifestUrl.replace(/\/manifest\.json.*$/,''); }
+  function canProxy(u){ return /^https?:\/\//i.test(u||'') && String(u).indexOf(CLOUD_BASE) !== 0; }
   async function getJson(url){
-    var r = await fetch(url, { headers: { 'Accept':'application/json' } });
-    if (!r.ok) throw new Error('HTTP '+r.status);
-    return r.json();
+    try {
+      var r = await fetch(url, { headers: { 'Accept':'application/json' } });
+      if (!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    } catch(err){
+      // A TypeError from fetch is CORS, mixed content, or an unreachable host —
+      // the add-on's server can't be fixed from here, so the cloud fetches it
+      // server-side and hands it back with the right headers. An HTTP error
+      // means the server answered; a proxy retry would only repeat it.
+      if (err instanceof TypeError && canProxy(url)){
+        var pr = await fetch(CLOUD_BASE + '/p?u=' + encodeURIComponent(url), { headers: { 'Accept':'application/json' } });
+        if (!pr.ok) throw new Error('HTTP '+pr.status);
+        return pr.json();
+      }
+      throw err;
+    }
   }
 
   // Update nudge: compare our build tag to the one published on the download site.
@@ -1052,7 +1302,7 @@
   (function checkPlayerUpdate(){
     try {
       if (typeof fetch !== 'function') return;
-      fetch('https://retrocodes12.github.io/nebula-player/player-version.json', { cache:'no-store' })
+      fetch(SITE + '/player-version.json', { cache:'no-store' })
         .then(function(r){ return r.ok ? r.json() : null; })
         .then(function(j){
           if (!j || !j.version || j.version === PLAYER_VERSION) return;
@@ -1060,7 +1310,7 @@
           var banner = document.getElementById('updBanner');
           document.getElementById('updText').textContent =
             'Nebula update available' + (j.notes ? ' — ' + j.notes : '') + '.';
-          document.getElementById('updGet').href = j.url || 'https://retrocodes12.github.io/nebula-player/';
+          document.getElementById('updGet').href = j.url || SITE + '/';
           document.getElementById('updX').onclick = function(){
             try { if (LS) LS.setItem('nebulaUpdDismiss', j.version); } catch(e){}
             banner.classList.remove('show');
@@ -1115,7 +1365,7 @@
   }
 
   // ---------- add via phone (QR + ntfy relay) ----------
-  var PAIR_PAGE = 'https://retrocodes12.github.io/nebula-player/pair.html';
+  var PAIR_PAGE = SITE + '/pair.html';
   var NTFY = 'https://ntfy.sh/';
   var pairTimer = null, pairDeadline = 0;
   function randStr(n, chars){
@@ -1534,6 +1784,135 @@
     });
   }
 
+  // ---------- library tab: My List grid + upcoming episodes ----------
+  var upcomingCache = { at: 0, rows: null };
+  function libCard(r){
+    var card = document.createElement('button');
+    card.className = 'card focusable shape-' + (r.shape || 'poster');
+    var thumb = r.poster
+      ? '<img loading="lazy" src="' + esc(r.poster) + '" onerror="this.style.display=\'none\'">'
+      : '<span class="thumb-ph">' + esc((r.name||'?').replace(/[^A-Za-z0-9]/g,'').slice(0,2).toUpperCase() || '••') + '</span>';
+    card.innerHTML = '<div class="thumb">' + thumb + '</div>' +
+      '<div class="card-label">' + esc(r.name || r.id) + '</div>';
+    card.onclick = function(){
+      var a = addonByUrl(r.addonUrl);
+      if (a) ctx.addon = a;
+      openDetail({ id: r.id, type: r.type, name: r.name, poster: r.poster, posterShape: r.shape }, r.type);
+    };
+    var x = document.createElement('button');
+    x.className = 'cw-x focusable'; x.title = 'Remove from My List';
+    x.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+    x.onclick = function(ev){
+      ev.stopPropagation();
+      toggleLibrary(r.type, { id: r.id, name: r.name, poster: r.poster, posterShape: r.shape }, r.addonUrl);
+      renderLibraryTab(); focusFirst();
+    };
+    card.appendChild(x);
+    return card;
+  }
+  function renderLibraryTab(){
+    var wrap = $id('libraryBody'); if (!wrap) return;
+    var items = libraryList();
+    wrap.innerHTML = '';
+    if (!items.length){
+      wrap.innerHTML = '<div class="empty">Nothing saved yet — open any title and press <b>+ My List</b>. ' +
+        'New episodes of saved series appear here under Upcoming.</div>';
+      return;
+    }
+    var grid = document.createElement('div'); grid.className = 'grid'; grid.id = 'libGrid';
+    items.forEach(function(r){ grid.appendChild(libCard(r)); });
+    wrap.appendChild(grid);
+    renderUpcoming(wrap);
+  }
+  function dayLabel(t){
+    var d = new Date(t), now = new Date();
+    function ymd(x){ return x.getFullYear() + '-' + x.getMonth() + '-' + x.getDate(); }
+    if (ymd(d) === ymd(now)) return 'Today';
+    if (ymd(d) === ymd(new Date(now.getTime() + 86400000))) return 'Tomorrow';
+    if (ymd(d) === ymd(new Date(now.getTime() - 86400000))) return 'Yesterday';
+    var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return days[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()] +
+      (d.getFullYear() !== now.getFullYear() ? ' ' + d.getFullYear() : '');
+  }
+  function upRow(row){
+    var s = row.series, v = row.v;
+    var el = document.createElement('button'); el.className = 'stream focusable';
+    var poster = s.poster
+      ? '<img class="up-poster" loading="lazy" src="' + esc(s.poster) + '" onerror="this.style.display=\'none\'">'
+      : '<span class="up-poster ph">' + esc((s.name||'?').slice(0,1).toUpperCase()) + '</span>';
+    var out = row.t <= Date.now();
+    el.innerHTML = poster + '<span><span class="stream-name">' + esc(s.name) + '</span>' +
+      '<span class="stream-sub"><span class="up-tag">' + esc(epTag(v)) + '</span>' +
+      esc(v.name || v.title || '') + (out ? '' : ' — not out yet') + '</span></span>';
+    el.onclick = function(){
+      var a = addonByUrl(s.addonUrl);
+      if (a) ctx.addon = a;
+      ctx.seriesEpisodes = null; ctx.epIndex = -1; ctx.seriesName = s.name || '';
+      ctx.streamTitle = epLabel(s.name, v);
+      openStreams('series', v.id, ctx.streamTitle);
+      hydrateSeriesChain('series', v.id);
+    };
+    return el;
+  }
+  /** Episodes dated within the last week or the next 45 days, across every
+      saved series — the "is there anything new for me" answer at a glance. */
+  async function loadUpcoming(series){
+    var floor = Date.now() - 8*24*3600000, horizon = Date.now() + 45*24*3600000;
+    var rows = [];
+    function collect(s){
+      return fetchFullMeta('series', s.id, s.addonUrl).then(function(meta){
+        ((meta && meta.videos) || []).forEach(function(v){
+          if (!v || !v.released || !v.id) return;
+          var t = Date.parse(v.released);
+          if (isNaN(t) || t < floor || t > horizon) return;
+          rows.push({ series: s, v: v, t: t });
+        });
+      }).catch(function(){});
+    }
+    // four series in flight at a time — strictly sequential fetches left the
+    // skeleton up for tens of seconds on a big library
+    var list = series.slice(0, 25);
+    for (var i = 0; i < list.length; i += 4){
+      await Promise.all(list.slice(i, i + 4).map(collect));
+    }
+    rows.sort(function(a,b){ return a.t - b.t; });
+    return rows.slice(0, 60);
+  }
+  function paintUpcoming(box, rows){
+    box.innerHTML = '';
+    if (!rows.length){
+      box.innerHTML = '<div class="empty">No dated episodes coming up for your saved series.</div>';
+      return;
+    }
+    var lastDay = null;
+    rows.forEach(function(row){
+      var lb = dayLabel(row.t);
+      if (lb !== lastDay){
+        lastDay = lb;
+        var h = document.createElement('div'); h.className = 'up-day'; h.textContent = lb;
+        box.appendChild(h);
+      }
+      box.appendChild(upRow(row));
+    });
+  }
+  function renderUpcoming(wrap){
+    var series = libraryList().filter(function(r){ return r.type === 'series'; });
+    if (!series.length) return;
+    var head = document.createElement('div'); head.className = 'section-title'; head.textContent = 'Upcoming';
+    var box = document.createElement('div'); box.id = 'upcomingList';
+    wrap.appendChild(head); wrap.appendChild(box);
+    if (upcomingCache.rows && Date.now() - upcomingCache.at < 1800000){
+      paintUpcoming(box, upcomingCache.rows);
+      return;
+    }
+    box.innerHTML = '<div class="streamsec">' + episodeSkeletons(3) + '</div>';
+    loadUpcoming(series).then(function(rows){
+      upcomingCache = { at: Date.now(), rows: rows };
+      if (document.getElementById('upcomingList') === box) paintUpcoming(box, rows);
+    });
+  }
+
   // ---------- streams ----------
   // Stremio semantics: catalog add-ons and stream add-ons are separate things.
   // Opening an item asks EVERY installed add-on whose manifest says it serves
@@ -1558,6 +1937,7 @@
   }
   function canStream(m, type, id){ return supports(m, 'stream', type, id); }
   function canMeta(m, type, id){ return supports(m, 'meta', type, id); }
+  function canSubs(m, type, id){ return supports(m, 'subtitles', type, id); }
   function streamCard(s){
     var card=document.createElement('button'); card.className='stream focusable';
     card.innerHTML = '<span class="stream-play"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></span><span><span class="stream-name">'+esc(s.name||'Stream')+'</span><span class="stream-sub">'+esc((s.title||'').replace(/\n/g,' · '))+'</span></span>';
@@ -1570,10 +1950,129 @@
     ctx.streamTitle = null;
     ctx.seriesEpisodes = null; ctx.epIndex = -1;   // a movie must not inherit a stale chain
     var type = meta.type || (ctx.catalog && ctx.catalog.type) || 'tv';
-    // Series get a season/episode picker first; movies (and everything else)
-    // go straight to the stream list.
-    if (type === 'series'){ openSeries(meta, type); return; }
-    openStreams(type, meta.id, meta.name);
+    openDetail(meta, type);
+  }
+
+  // ---------- detail: one title's page — art, facts, actions ----------
+  var detSeq = 0, detCur = null;
+  var metaFullCache = {};
+  /** Full meta (description, background, runtime, rating, videos) from whichever
+      add-on will answer — the item's own first, then anyone advertising `meta`. */
+  async function fetchFullMeta(type, id, originUrl){
+    var ck = type + ':' + id;
+    if (metaFullCache[ck]) return metaFullCache[ck];
+    var origin = (originUrl && addonByUrl(originUrl)) || ctx.addon || null;
+    var order = origin ? [origin] : [];
+    getAddons().forEach(function(a){ if (!origin || a.url !== origin.url) order.push(a); });
+    for (var i=0;i<order.length;i++){
+      var a = order[i];
+      try {
+        var m = await getManifest(a.url);
+        if (!(origin && a.url === origin.url) && !canMeta(m, type, id)) continue;
+        var d = await getJson(a.base + '/meta/' + encodeURIComponent(type) + '/' + encodeURIComponent(id) + '.json');
+        if (d && d.meta){ metaFullCache[ck] = d.meta; return d.meta; }
+      } catch(e){}
+    }
+    return null;
+  }
+  function metaYear(meta){
+    if (meta.releaseInfo) return String(meta.releaseInfo);
+    if (meta.year) return String(meta.year);
+    if (meta.released){ var d = new Date(meta.released); if (!isNaN(d.getTime())) return String(d.getFullYear()); }
+    return '';
+  }
+  function renderDetailFacts(meta){
+    var bits = [];
+    var y = metaYear(meta); if (y) bits.push(y);
+    if (meta.runtime) bits.push(String(meta.runtime));
+    if (meta.imdbRating) bits.push('★ ' + meta.imdbRating);
+    var g = meta.genres || meta.genre;
+    if (g && g.length) bits.push(g.slice(0,3).join(' · '));
+    $id('detMeta').textContent = bits.join('   ·   ');
+    $id('detDesc').textContent = meta.description || meta.overview || '';
+  }
+  function renderDetailArt(meta){
+    var art = $id('detArt');
+    var img = meta.background || meta.poster || '';
+    art.innerHTML = img
+      ? '<img loading="lazy" src="'+esc(img)+'" onerror="this.remove()">'
+      : '<span class="thumb-ph">'+esc((meta.name||'?').replace(/[^A-Za-z0-9]/g,'').slice(0,2).toUpperCase()||'••')+'</span>';
+  }
+  /** The newest still-in-progress episode of a series, or null. Episode ids are
+      "<seriesId>:…", where seriesId itself may contain colons (kitsu:12345), so
+      membership is a prefix test — never a split on the first colon. */
+  function seriesResume(type, seriesId){
+    var p = getProgress(), best = null, prefix = String(seriesId) + ':';
+    Object.keys(p).forEach(function(k){
+      var r = p[k];
+      if (!r || r.done || !r.pos || !r.dur || r.type !== type) return;
+      if (String(r.id).indexOf(prefix) !== 0) return;
+      if (r.pos < PROG_MIN_POS || r.pos > r.dur - PROG_END_GAP) return;
+      if (!best || (r.at||0) > (best.at||0)) best = r;
+    });
+    return best;
+  }
+  function syncDetButtons(){
+    var meta = detCur.meta, type = detCur.type;
+    var play = $id('detPlay'), lbl = $id('detPlayLbl'), eps = $id('detEpisodes');
+    eps.style.display = (type === 'series') ? '' : 'none';
+    if (type === 'series'){
+      eps.onclick = function(){ openSeries(meta, type); };
+      var r = seriesResume(type, meta.id);
+      if (r){
+        // label from the id's tail past the series prefix: S:E for tt-style
+        // ids, a bare episode number for kitsu-style, else just "Resume"
+        var rest = String(r.id).slice(String(meta.id).length + 1).split(':');
+        lbl.textContent = rest.length === 2 ? ('Resume S'+rest[0]+'E'+rest[1])
+          : (rest.length === 1 && rest[0] !== '' ? 'Resume E'+rest[0] : 'Resume');
+        play.onclick = function(){
+          ctx.seriesEpisodes = null; ctx.epIndex = -1; ctx.seriesName = meta.name || '';
+          ctx.streamTitle = r.name || meta.name || '';
+          openStreams(type, r.id, ctx.streamTitle);
+          hydrateSeriesChain(type, r.id);
+        };
+      } else {
+        lbl.textContent = 'Play';
+        play.onclick = function(){ openSeries(meta, type); };
+      }
+    } else {
+      var pr = progFor(type, meta.id);
+      lbl.textContent = (pr && !pr.done && pr.pos) ? 'Resume' : 'Play';
+      play.onclick = function(){ ctx.streamTitle = meta.name || null; openStreams(type, meta.id, meta.name); };
+    }
+    var on = inLibrary(type, meta.id);
+    $id('detList').textContent = on ? '✓ In My List' : '+ My List';
+    $id('detList').onclick = function(){
+      toggleLibrary(type, detCur.meta, (detCur.addon && detCur.addon.url) || '');
+      syncDetButtons();
+    };
+  }
+  function openDetail(meta, type){
+    type = type || meta.type || 'movie';
+    ctx.item = meta;                       // stream/poster identity keys off this
+    detCur = { meta: meta, type: type, addon: ctx.addon || null };
+    var seq = ++detSeq;
+    $id('detTitle').textContent = meta.name || 'Details';
+    renderDetailFacts(meta);
+    renderDetailArt(meta);
+    syncDetButtons();
+    show('detail');
+    // land focus on Play, not the back button — one OK press should start it
+    setTimeout(function(){
+      var v = document.querySelector('.view.active');
+      if (v && v.id === 'view-detail') $id('detPlay').focus();
+    }, 60);
+    fetchFullMeta(type, meta.id).then(function(full){
+      if (seq !== detSeq || !full) return;
+      // enhance in place: the full meta wins wherever it actually has something
+      var merged = {};
+      Object.keys(meta).forEach(function(k){ merged[k] = meta[k]; });
+      Object.keys(full).forEach(function(k){ if (full[k] != null && full[k] !== '') merged[k] = full[k]; });
+      detCur.meta = merged; ctx.item = merged;
+      renderDetailFacts(merged);
+      renderDetailArt(merged);
+      syncDetButtons();
+    });
   }
 
   // ---------- series: seasons + episodes ----------
@@ -1664,7 +2163,11 @@
       the series chain in the background — otherwise "next episode" is dead there.
       Stremio episode ids are "<seriesId>:<season>:<episode>". */
   async function hydrateSeriesChain(type, episodeId){
-    var seriesId = String(episodeId||'').split(':')[0];
+    // "tt123:1:2" → series tt123; "kitsu:12345:3" → series kitsu:12345 — an
+    // imdb id is its own first segment, anything else keeps all but the last.
+    var segs = String(episodeId||'').split(':');
+    if (segs.length < 2) return;
+    var seriesId = /^tt\d+$/.test(segs[0]) ? segs[0] : segs.slice(0, -1).join(':');
     if (!seriesId || seriesId === episodeId) return;
     var seq = ++seriesSeq;
     var res = await fetchSeriesVideos(type, seriesId, seq);
@@ -1841,9 +2344,11 @@
     clearTimeout(puiState.idleTimer);
     closePuiMenu(false);
     exitPip();
+    resetSubs();
     if (miniOn) setMini(false);
     if (player){ try{ await player.destroy(); }catch(e){} player=null; }
     video.style.display='none';
+    document.body.classList.remove('pui-on');
     try { video.playbackRate = 1; } catch(e){}
   }
   var playSeq = 0, didRetry = false;
@@ -1865,7 +2370,7 @@
     setStatus('Playback error ' + code + detail, 'err');
     try { $id('puiSpin').style.display = 'none'; } catch(e){}
   }
-  async function playUrl(rawUrl, clearKeys, title, subtitles){
+  async function playUrl(rawUrl, clearKeys, title, subtitles, mimeType){
     if (!initShaka()) return;
     var seq = ++playSeq;
     didRetry = false;
@@ -1923,19 +2428,23 @@
     // load() starts buffering there, rather than loading at 0 and seeking.
     var startAt = curPlay ? resumeAt(curPlay.type, curPlay.id) : 0;
     try {
-      if (startAt) await player.load(cleanUrl(rawUrl), startAt);
-      else await player.load(cleanUrl(rawUrl));
+      // a blob: URL (local file) has no extension — the MIME type stands in
+      if (startAt) await player.load(cleanUrl(rawUrl), startAt, mimeType || undefined);
+      else await player.load(cleanUrl(rawUrl), null, mimeType || undefined);
       if (seq !== playSeq) return;
       setStatus(startAt ? ('Resumed from ' + fmtT(startAt) + '.') : 'Playing.', 'ok');
       try { await video.play(); } catch(e){}
       $id('puiSpin').style.display = 'none';
       puiRefreshButtons(); puiTick();
+      // ask the subtitle add-ons what they have for this title (candidates only —
+      // nothing is downloaded until one is picked)
+      if (curPlay && curPlay.type && curPlay.id) loadAddonSubs(curPlay.type, curPlay.id, seq);
       // add-on-provided subtitle files become selectable text tracks
       (subtitles||[]).forEach(function(sub){
         if (!sub || !sub.url || !player.addTextTrackAsync) return;
         var mime = /\.srt(\?|#|$)/i.test(sub.url) ? 'text/srt' : 'text/vtt';
         try {
-          player.addTextTrackAsync(sub.url, sub.lang || 'und', 'subtitles', mime, '', sub.lang || 'Subtitles')
+          player.addTextTrackAsync(sub.url, sub.lang || 'und', 'subtitles', mime, '', langName(sub.lang) || sub.lang || 'Subtitles')
             .then(function(){ puiRefreshButtons(); }).catch(function(){});
         } catch(e){}
       });
@@ -1948,6 +2457,208 @@
   }
   function playStream(s){
     playUrl(s.url, extractClearKeys(s), ctx.streamTitle || (ctx.item && ctx.item.name) || s.name || 'Nebula', s.subtitles || []);
+  }
+
+  // ---------- subtitles from add-ons ----------
+  // Streams rarely carry subtitles of their own, so the Subtitles menu also asks
+  // every installed add-on that advertises Stremio's `subtitles` resource
+  // (OpenSubtitles and friends). Only the candidate you actually pick is
+  // downloaded — a popular film lists ~100 of them.
+  var SUB_PER_LANG = 4, SUB_MAX = 60;
+  var subState = { seq:0, loading:false, asked:0, list:[], loaded:{}, urls:[], pending:false };
+  function resetSubs(){
+    subState.urls.forEach(function(u){ try { URL.revokeObjectURL(u); } catch(e){} });
+    subState = { seq:0, loading:false, asked:0, list:[], loaded:{}, urls:[], pending:false };
+  }
+  /** Group by language, user's languages first, numbered within each language. */
+  function rankSubs(list){
+    var pref = {};
+    try {
+      (navigator.languages || [navigator.language || 'en']).forEach(function(l, i){
+        // 'en-US' names itself "American English"; subtitle codes say "English",
+        // so the bare language has to be ranked too
+        var full = langName(l), base = langName(String(l).split('-')[0]);
+        if (pref[full] == null) pref[full] = i * 2;
+        if (pref[base] == null) pref[base] = i * 2 + 1;
+      });
+    } catch(e){}
+    var byLang = {}, order = [];
+    list.forEach(function(s){
+      var n = langName(s.lang);
+      if (!byLang[n]){ byLang[n] = []; order.push(n); }
+      byLang[n].push(s);
+    });
+    order.sort(function(a, b){
+      var pa = (pref[a] == null ? 99 : pref[a]), pb = (pref[b] == null ? 99 : pref[b]);
+      if (pa !== pb) return pa - pb;
+      return a < b ? -1 : (a > b ? 1 : 0);
+    });
+    var out = [];
+    order.forEach(function(n){
+      byLang[n].slice(0, SUB_PER_LANG).forEach(function(s, i){
+        s.label = s.name || (n + (i ? ' ' + (i + 1) : ''));
+        out.push(s);
+      });
+    });
+    return out.slice(0, SUB_MAX);
+  }
+  async function loadAddonSubs(type, id, seq){
+    subState.seq = seq; subState.loading = true; subState.asked = 0; subState.list = [];
+    var addons = getAddons(), out = [];
+    for (var i = 0; i < addons.length; i++){
+      var a = addons[i];
+      try {
+        var m = await getManifest(a.url);
+        if (seq !== subState.seq) return;
+        if (!canSubs(m, type, id)) continue;
+        subState.asked++;
+        var d = await getJson(a.base + '/subtitles/' + encodeURIComponent(type) + '/' + encodeURIComponent(id) + '.json');
+        if (seq !== subState.seq) return;
+        ((d && d.subtitles) || []).forEach(function(s){
+          if (s && s.url) out.push({ url:s.url, lang:s.lang || s.language || 'und', name:s.name || s.title || '' });
+        });
+      } catch(e){}
+    }
+    if (seq !== subState.seq) return;
+    subState.loading = false;
+    subState.list = rankSubs(out);
+    // if the menu is sitting on “Searching…”, fill it in place
+    if (puiState.menu === 'subs' && subState.pending) openPuiMenu('subs', puiState.opener);
+  }
+  /** Fetched here rather than handed to Shaka as a URL: add-on subtitle links carry
+      no file extension (the format has to be sniffed) and some are still CP1252. */
+  async function fetchSubBlob(url){
+    var r;
+    try { r = await fetch(url); }
+    catch(err){
+      if (!(err instanceof TypeError) || !canProxy(url)) throw err;
+      r = await fetch(CLOUD_BASE + '/p?u=' + encodeURIComponent(url));
+    }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    var buf = await r.arrayBuffer();
+    var text = '';
+    try { text = new TextDecoder('utf-8').decode(buf); } catch(e){}
+    // a replacement char means it wasn't UTF-8 — these files are usually CP1252
+    if (!text || text.indexOf('\uFFFD') !== -1){
+      try { text = new TextDecoder('windows-1252').decode(buf); } catch(e){}
+    }
+    text = text.replace(/^\uFEFF/, '');
+    if (!text.trim()) throw new Error('empty');
+    var mime = /^WEBVTT/.test(text) ? 'text/vtt' : 'text/srt';
+    var u = URL.createObjectURL(new Blob([text], { type: mime }));
+    subState.urls.push(u);
+    return { url:u, mime:mime };
+  }
+  async function pickAddonSub(c){
+    if (!player) return;
+    closePuiMenu(true);
+    setStatus('Loading subtitles…', 'info');
+    var seq = playSeq;
+    try {
+      var blob = await fetchSubBlob(c.url);
+      if (!player || seq !== playSeq) return;
+      var track = await player.addTextTrackAsync(blob.url, c.lang, 'subtitles', blob.mime, '', c.label);
+      if (!player || seq !== playSeq) return;
+      subState.loaded[c.url] = true;
+      if (!track){
+        (player.getTextTracks() || []).forEach(function(t){ if (t.label === c.label) track = t; });
+      }
+      if (track) player.selectTextTrack(track);
+      player.setTextTrackVisibility(true);
+      setStatus('Subtitles: ' + c.label, 'ok');
+      puiRefreshButtons();
+    } catch(e){
+      setStatus('Couldn’t load that subtitle file.', 'err');
+    }
+  }
+
+  // ---------- subtitle appearance ----------
+  // Cues are drawn natively (Shaka's SimpleTextDisplayer feeds the video's own
+  // TextTrack), so their look is set through the video::cue pseudo-element —
+  // Chrome-26-era CSS, which keeps webOS's Chrome 68 safe. Sizes are relative to
+  // the browser's default cue size (5% of the video height) so they scale with
+  // the screen; the position rides the same container transform that lifts cues
+  // above the control bar. Stored as option KEYS, so the CSS behind a key can be
+  // tuned later without invalidating anyone's saved choice.
+  var SUB_OPTS = {
+    size:  { label:'Size',       vals:[['small','Small','75%'], ['normal','Normal','100%'], ['large','Large','130%'],
+                                       ['xl','Extra large','165%'], ['huge','Huge','200%']] },
+    color: { label:'Colour',     vals:[['white','White','#fff'], ['yellow','Yellow','#ffe600'], ['cyan','Cyan','#62f0ff'],
+                                       ['green','Green','#7dff8a']] },
+    bg:    { label:'Background', vals:[['dark','Dark','rgba(0,0,0,.8)'], ['light','Translucent','rgba(0,0,0,.45)'],
+                                       ['none','None','transparent']] },
+    edge:  { label:'Edge',       vals:[['shadow','Shadow','.04em .06em .12em rgba(0,0,0,.95), 0 0 .2em rgba(0,0,0,.7)'],
+                                       ['outline','Outline','-.05em -.05em 0 #000, .05em -.05em 0 #000, -.05em .05em 0 #000, .05em .05em 0 #000, 0 0 .08em #000'],
+                                       ['none','None','none']] },
+    font:  { label:'Font',       vals:[['sans','Sans-serif','sans-serif'], ['serif','Serif','serif'], ['mono','Monospace','monospace']] },
+    pos:   { label:'Position',   vals:[['bottom','Bottom','0vh'], ['raised','Raised','8vh'], ['high','High','18vh'], ['centre','Centre','40vh']] }
+  };
+  var SUB_ORDER = ['size','color','bg','edge','font','pos'];
+  var SUB_DEFAULT = { size:'normal', color:'white', bg:'dark', edge:'shadow', font:'sans', pos:'bottom' };
+  function subVal(k, key){ var v = SUB_OPTS[k].vals; for (var i=0;i<v.length;i++) if (v[i][0]===key) return v[i]; return null; }
+  function normSubStyle(o){ var out={}; SUB_ORDER.forEach(function(k){ out[k] = (o && subVal(k, o[k])) ? o[k] : SUB_DEFAULT[k]; }); return out; }
+  function loadSubStyle(){ var o=null; try { o = JSON.parse(LS.getItem('sub_style')||'null'); } catch(e){} return normSubStyle(o); }
+  var subStyle = loadSubStyle(), subStyleEl = null;
+  function subCss(k){ return subVal(k, subStyle[k])[2]; }
+  function saveSubStyle(){
+    var json = JSON.stringify(subStyle);
+    try { LS.setItem('sub_style', json); LS.setItem('sub_style_at', String(Date.now())); } catch(e){}
+    mirrorKv('sub_style', json);
+    cloudPushSoon('sub_style');
+  }
+  function applySubStyle(){
+    if (!subStyleEl){ subStyleEl = document.createElement('style'); subStyleEl.id = 'subStyleCss'; document.head.appendChild(subStyleEl); }
+    var up = subCss('pos');
+    subStyleEl.textContent =
+      'video::cue{color:' + subCss('color') + ';background-color:' + subCss('bg') + ';font-size:' + subCss('size') +
+        ';text-shadow:' + subCss('edge') + ';font-family:' + subCss('font') + '}' +
+      'video::-webkit-media-text-track-container{transform:translateY(-' + up + ')}' +
+      'body.pui-on video::-webkit-media-text-track-container{transform:translateY(calc(-' + up + ' - 104px))}' +
+      'html.tv body.pui-on video::-webkit-media-text-track-container{transform:translateY(calc(-' + up + ' - 152px))}';
+  }
+  applySubStyle();
+  // rides the add-on/progress mirrors: a TV storage wipe shouldn't reset your subtitles
+  function initPersistentSubStyle(){
+    var has = false; try { has = !!LS.getItem('sub_style'); } catch(e){}
+    if (has){ mirrorKv('sub_style', JSON.stringify(subStyle)); return; }
+    idbLoad('sub_style')
+      .then(function(v){ if (v) return v; return db8Load('sub_style'); })
+      .then(function(v){
+        if (!v) return;
+        var o = null; try { o = JSON.parse(v); } catch(e){}
+        if (!o) return;
+        subStyle = normSubStyle(o);
+        try { LS.setItem('sub_style', JSON.stringify(subStyle)); } catch(e){}
+        applySubStyle();
+      });
+  }
+  function subCycle(k, dir){
+    var vals = SUB_OPTS[k].vals, i = 0;
+    vals.forEach(function(v, idx){ if (v[0]===subStyle[k]) i = idx; });
+    subStyle[k] = vals[(i + dir + vals.length) % vals.length][0];
+    saveSubStyle(); applySubStyle(); subRefreshRows();
+  }
+  function subSetRow(k){
+    var b = document.createElement('button'); b.className = 'qopt qset focusable'; b.tabIndex = 0; b.setAttribute('data-key', k);
+    var l = document.createElement('span'); l.className = 'qk'; l.textContent = SUB_OPTS[k].label;
+    var v = document.createElement('span'); v.className = 'qv';
+    b.appendChild(l); b.appendChild(v);
+    b.onclick = function(){ subCycle(k, 1); };
+    b.onkeydown = function(ev){ if (ev.keyCode===13){ subCycle(k, 1); ev.preventDefault(); ev.stopPropagation(); } };
+    puiMenuEl.appendChild(b);
+  }
+  /** Repaint the row values and the sample line in place, so focus never moves. */
+  function subRefreshRows(){
+    Array.prototype.forEach.call(puiMenuEl.querySelectorAll('.qset'), function(b){
+      var k = b.getAttribute('data-key');
+      b.querySelector('.qv').textContent = '‹ ' + subVal(k, subStyle[k])[1] + ' ›';
+    });
+    var pt = puiMenuEl.querySelector('.qprev-t');
+    if (pt){
+      pt.style.fontSize = ((IS_TV ? 17 : 13) * parseFloat(subCss('size')) / 100) + 'px';
+      pt.style.color = subCss('color'); pt.style.backgroundColor = subCss('bg');
+      pt.style.textShadow = subCss('edge'); pt.style.fontFamily = subCss('font');
+    }
   }
 
   // ---------- player UI (custom controls: transport, seek, subtitles, audio, quality, speed) ----------
@@ -1964,9 +2675,14 @@
     tracks.forEach(function(t){ if(!seen[t.height]){ seen[t.height]=1; out.push(t.height); } });
     out.sort(function(a,b){ return b-a; }); return out;
   }
+  // Subtitle add-ons use a few codes that aren't ISO language tags, so Intl would
+  // hand them straight back ('pob' → 'pob'). Map those before asking.
+  var LANG_ALIAS = { pob:'pt-BR', pb:'pt-BR', pm:'pt', zht:'zh-Hant', zhs:'zh-Hans',
+    zhe:'zh', ze:'zh', spl:'es-419', ea:'es-419', me:'sr-ME' };
   function langName(code){
     if (!code || code === 'und') return 'Unknown';
-    try { var dn = new Intl.DisplayNames(['en'], { type:'language' }); return dn.of(code) || code; }
+    var c = LANG_ALIAS[String(code).toLowerCase()] || code;
+    try { var dn = new Intl.DisplayNames(['en'], { type:'language' }); return dn.of(c) || code; }
     catch(e){ return code; }
   }
   function fmtT(s){
@@ -2032,6 +2748,7 @@
   function puiShow(){
     if (!pui) return;
     pui.className = '';
+    document.body.classList.add('pui-on');
     clearTimeout(puiState.idleTimer);
     puiState.idleTimer = setTimeout(function(){
       if (!video.paused && !puiState.menu && !upnextState.open) puiIdle();
@@ -2039,6 +2756,7 @@
   }
   function puiIdle(){
     closePuiMenu(false);
+    document.body.classList.remove('pui-on');
     if (document.activeElement && pui.contains(document.activeElement)) document.activeElement.blur();
     pui.className = 'idle';
   }
@@ -2056,12 +2774,15 @@
     b.onkeydown=function(ev){ if(ev.keyCode===13){ fn(); ev.preventDefault(); ev.stopPropagation(); } };
     puiMenuEl.appendChild(b);
   }
+  function puiSep(){ var d=document.createElement('div'); d.className='qsep'; puiMenuEl.appendChild(d); }
+  function puiNote(text){ var d=document.createElement('div'); d.className='qnote'; d.textContent=text; puiMenuEl.appendChild(d); }
   function openPuiMenu(kind, opener){
     if (!player) return;
     puiMenuEl.innerHTML = '';
     var t=document.createElement('div'); t.className='qtitle';
-    t.textContent = { quality:'Quality', subs:'Subtitles', audio:'Audio', speed:'Speed' }[kind];
+    t.textContent = { quality:'Quality', subs:'Subtitles', audio:'Audio', speed:'Speed', substyle:'Subtitle appearance' }[kind];
     puiMenuEl.appendChild(t);
+    if (kind==='substyle') puiMenuEl.classList.add('wide'); else puiMenuEl.classList.remove('wide');
     if (kind==='quality'){
       var tracks = videoTracks(), heights = distinctHeights(tracks);
       var abrOn=true; try { abrOn = player.getConfiguration().abr.enabled; } catch(e){}
@@ -2081,6 +2802,32 @@
           try { player.selectTextTrack(tr); player.setTextTrackVisibility(true); } catch(e){}
           setStatus('Subtitles: '+label,'ok'); closePuiMenu(true);
         });
+      });
+      // …plus whatever the installed subtitle add-ons can offer for this title
+      var fresh = subState.list.filter(function(c){ return !subState.loaded[c.url]; });
+      subState.pending = subState.loading;
+      if (subState.loading) puiNote('Searching add-ons…');
+      else if (fresh.length){
+        puiSep();
+        fresh.forEach(function(c){ menuOpt(c.label, false, function(){ pickAddonSub(c); }); });
+      } else if (!subState.asked && !tt.length){
+        puiNote('No subtitle add-on installed. Add one — OpenSubtitles v3, say — on the Add-ons tab.');
+      } else if (subState.asked && !subState.list.length){
+        puiNote('No add-on subtitles for this title.');
+      }
+      puiSep();
+      menuOpt('Appearance ›', false, function(){ openPuiMenu('substyle', puiState.opener); });
+    } else if (kind==='substyle'){
+      menuOpt('‹ Subtitles', false, function(){ openPuiMenu('subs', puiState.opener); });
+      var prev = document.createElement('div'); prev.className = 'qprev';
+      var pt = document.createElement('span'); pt.className = 'qprev-t'; pt.textContent = 'Subtitles will look like this';
+      prev.appendChild(pt); puiMenuEl.appendChild(prev);
+      SUB_ORDER.forEach(subSetRow);
+      subRefreshRows();
+      puiSep();
+      menuOpt('Reset to defaults', false, function(){
+        subStyle = normSubStyle(null); saveSubStyle(); applySubStyle(); subRefreshRows();
+        setStatus('Subtitle appearance reset.','ok');
       });
     } else if (kind==='audio'){
       var langs=[]; try { langs = player.getAudioLanguagesAndRoles()||[]; } catch(e){}
@@ -2103,7 +2850,7 @@
     }
     puiMenuEl.classList.add('open');
     puiState.menu = kind; puiState.opener = opener || null;
-    var on = puiMenuEl.querySelector('.qopt.on') || puiMenuEl.querySelector('.qopt');
+    var on = (kind==='substyle' && puiMenuEl.querySelector('.qset')) || puiMenuEl.querySelector('.qopt.on') || puiMenuEl.querySelector('.qopt');
     if (on) setTimeout(function(){ on.focus(); }, 10);
     puiShow();
   }
@@ -2134,8 +2881,8 @@
   function puiRefreshButtons(){
     if (!player) return;
     $id('puiQual').style.display = distinctHeights(videoTracks()).length >= 2 ? '' : 'none';
-    var tt=[]; try { tt = player.getTextTracks()||[]; } catch(e){}
-    $id('puiSubs').style.display = tt.length ? '' : 'none';
+    // always offered: even with no embedded track, add-ons may have one
+    $id('puiSubs').style.display = '';
     var langs=[]; try { langs = player.getAudioLanguagesAndRoles()||[]; } catch(e){}
     $id('puiAudio').style.display = langs.length >= 2 ? '' : 'none';
     $id('puiNext').style.display = nextEpisode() ? '' : 'none';
@@ -2148,7 +2895,7 @@
     closePuiMenu(false);
     $id('puiSpin').style.display = 'block';
     $id('puiFill').style.width='0%'; $id('puiBuf').style.width='0%'; $id('puiKnob').style.left='0%';
-    $id('puiSubs').style.display='none'; $id('puiAudio').style.display='none'; $id('puiQual').style.display='none';
+    $id('puiSubs').style.display=''; $id('puiAudio').style.display='none'; $id('puiQual').style.display='none';
     puiSyncPlayIcon();
     puiShow();
     clearInterval(puiState.tick);
@@ -2165,9 +2912,33 @@
   $id('puiRew').onclick = function(){ seekBy(-10); };
   $id('puiFwd').onclick = function(){ seekBy(10); };
   $id('puiQual').onclick = function(){ if (puiState.menu==='quality') closePuiMenu(true); else openPuiMenu('quality', this); };
-  $id('puiSubs').onclick = function(){ if (puiState.menu==='subs') closePuiMenu(true); else openPuiMenu('subs', this); };
+  $id('puiSubs').onclick = function(){ if (puiState.menu==='subs' || puiState.menu==='substyle') closePuiMenu(true); else openPuiMenu('subs', this); };
   $id('puiAudio').onclick = function(){ if (puiState.menu==='audio') closePuiMenu(true); else openPuiMenu('audio', this); };
   $id('puiSpeed').onclick = function(){ if (puiState.menu==='speed') closePuiMenu(true); else openPuiMenu('speed', this); };
+
+  // ---- fullscreen ----
+  // Hidden on webOS, where the app already owns the whole screen.
+  function fsEl(){ return document.fullscreenElement || document.webkitFullscreenElement || null; }
+  function fsOk(){ return !IS_WEBOS && !!(document.fullscreenEnabled || document.webkitFullscreenEnabled); }
+  function toggleFullscreen(){
+    if (!fsOk()) return;
+    var root = document.documentElement, p = null;
+    try {
+      if (fsEl()) p = (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      else p = (root.requestFullscreen || root.webkitRequestFullscreen).call(root);
+    } catch(e){}
+    if (p && p.catch) p.catch(function(){});   // a rejected request is not an error worth surfacing
+    puiShow();
+  }
+  function syncFsButton(){
+    var on = !!fsEl(), b = $id('puiFull');
+    b.textContent = on ? 'Exit fullscreen' : 'Fullscreen';
+    b.title = (on ? 'Exit fullscreen' : 'Fullscreen') + ' (f)';
+  }
+  if (fsOk()) $id('puiFull').style.display = '';
+  $id('puiFull').onclick = function(){ toggleFullscreen(); };
+  document.addEventListener('fullscreenchange', syncFsButton);
+  document.addEventListener('webkitfullscreenchange', syncFsButton);
 
   // ---- up next: keep a series going without a trip back to the episode list ----
   // Offered quietly in the last 25s, with a countdown once the episode ends.
@@ -2265,7 +3036,7 @@
     var ls = null; try { ls = LS.getItem('party_server'); } catch(e){}
     if (ls){ cb(ls); return; }
     if (partyServerCached){ cb(partyServerCached); return; }
-    fetch('https://retrocodes12.github.io/nebula-player/party.json', { cache:'no-store' })
+    fetch(SITE + '/party.json', { cache:'no-store' })
       .then(function(r){ return r.json(); })
       .then(function(j){ partyServerCached = (j && j.server) || PARTY_FALLBACK; cb(partyServerCached); })
       .catch(function(){ cb(PARTY_FALLBACK); });
@@ -2434,6 +3205,12 @@
       return;
     }
     if (partyPending){
+      partyPending.fails = (partyPending.fails || 0) + 1;
+      // the configured relay may be unreachable (DNS not propagated yet, host
+      // down) — after a few dead connects, fall back to the old public relay
+      if (partyPending.fails === 3 && partyServerCached && partyServerCached !== PARTY_FALLBACK){
+        partyServerCached = PARTY_FALLBACK;
+      }
       if (Date.now() < partyPending.until){ setStatus('Waking the party server…','info'); setTimeout(partyConnect, 5000); }
       else { partyPending = null; setStatus('Could not reach the party server.','err'); }
     }
@@ -2472,6 +3249,8 @@
     $id('puiParty').style.display = 'none';
     var partyPanelEl = document.getElementById('partyPanel');
     if (partyPanelEl) partyPanelEl.style.display = 'none';
+    var fileBtnEl = document.getElementById('fileBtn');   // no file dialogs on a TV
+    if (fileBtnEl) fileBtnEl.style.display = 'none';
   }
   (function(){
     var i = document.getElementById('partyCode'), b = document.getElementById('partyJoinBtn');
@@ -2491,6 +3270,10 @@
     if (e.target === pui || cls.indexOf('pui-shade') !== -1){
       if (pui.className === 'idle') puiShow(); else togglePlay();
     }
+  });
+  pui.addEventListener('dblclick', function(e){
+    var cls = e.target && e.target.className ? String(e.target.className) : '';
+    if (e.target === pui || cls.indexOf('pui-shade') !== -1) toggleFullscreen();
   });
   // seek bar: click + drag (mouse and touch)
   (function(){
@@ -2521,6 +3304,320 @@
     playUrl(url, Object.keys(keys).length?keys:null, 'Custom URL', []);
   }
 
+  // ---------- cross-device sync (Nebula Cloud) ----------
+  // A 6-character code typed once links devices into a group; add-ons, watch
+  // progress, My List and subtitle style then flow both ways. Every record
+  // carries a timestamp and the newest action wins wherever it happened, so
+  // there is no account and no "primary" device. Stremio needs an email login
+  // for this; here the code IS the pairing.
+  var cloudLink = null;
+  try { cloudLink = JSON.parse(LS.getItem('cloud_link')||'null'); } catch(e){}
+  var cloudRevs = {};
+  try { cloudRevs = JSON.parse(LS.getItem('cloud_revs')||'{}') || {}; } catch(e){}
+  // Keys with local changes the server has not confirmed yet. Survives reloads,
+  // so an edit made offline (or right before the tab closed) still pushes on the
+  // next boot even when the server's revisions look unchanged.
+  var cloudDirty = {};
+  try { cloudDirty = JSON.parse(LS.getItem('cloud_dirty')||'{}') || {}; } catch(e){}
+  var syncApplying = false, syncTimers = {}, lastPullAt = 0;
+  var SYNC_KEYS = ['addons','progress','library','sub_style'];
+  function cloudLinked(){ return !!(cloudLink && cloudLink.gid && cloudLink.secret); }
+  function saveCloudRevs(){ try { LS.setItem('cloud_revs', JSON.stringify(cloudRevs)); } catch(e){} }
+  function saveCloudDirty(){ try { LS.setItem('cloud_dirty', JSON.stringify(cloudDirty)); } catch(e){} }
+  function cloudApi(method, path, body, keepalive){
+    var h = { 'Content-Type': 'application/json' };
+    if (cloudLinked()) h['Authorization'] = 'Bearer ' + cloudLink.gid + '.' + cloudLink.secret;
+    var opts = { method: method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) };
+    if (keepalive) opts.keepalive = true;    // lets a final push outlive the page
+    return fetch(CLOUD_BASE + path, opts).then(function(r){
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    });
+  }
+  // The add-on list itself carries no timestamps, so the sync layer keeps its
+  // own: when was each URL added here, when was each removed.
+  var addonsSyncMeta = null;
+  function getAddonsSync(){
+    if (addonsSyncMeta) return addonsSyncMeta;
+    try { addonsSyncMeta = JSON.parse(LS.getItem('addons_sync')||'{}') || {}; } catch(e){ addonsSyncMeta = {}; }
+    addonsSyncMeta.at = addonsSyncMeta.at || {};
+    addonsSyncMeta.removed = addonsSyncMeta.removed || {};
+    return addonsSyncMeta;
+  }
+  function saveAddonsSync(){ try { LS.setItem('addons_sync', JSON.stringify(getAddonsSync())); } catch(e){} }
+  function syncNoteAddonsDiff(prev, next){
+    var s = getAddonsSync(), now = Date.now(), pv = {}, nx = {};
+    prev.forEach(function(a){ pv[a.url] = 1; });
+    next.forEach(function(a){ nx[a.url] = 1; if (!pv[a.url]){ s.at[a.url] = now; delete s.removed[a.url]; } });
+    prev.forEach(function(a){ if (!nx[a.url]){ s.removed[a.url] = now; delete s.at[a.url]; } });
+    saveAddonsSync();
+  }
+  function syncDocFor(key){
+    if (key === 'addons'){
+      var s = getAddonsSync(), doc = { list: {}, removed: {} }, stamped = false;
+      getAddons().forEach(function(a){
+        // add-ons installed before sync existed have no timestamp — stamp them
+        // now, or the receiving device's newest-wins merge can never adopt them
+        if (!s.at[a.url]){ s.at[a.url] = Date.now(); stamped = true; }
+        doc.list[a.url] = { name: a.name||'', base: a.base||baseOf(a.url), logo: a.logo||'', at: s.at[a.url] };
+      });
+      if (stamped) saveAddonsSync();
+      Object.keys(s.removed).forEach(function(u){ doc.removed[u] = s.removed[u]; });
+      return JSON.stringify(doc);
+    }
+    if (key === 'progress') return JSON.stringify(getProgress());
+    if (key === 'library') return JSON.stringify(getLibrary());
+    if (key === 'sub_style'){
+      var at = 0; try { at = Number(LS.getItem('sub_style_at')) || 0; } catch(e){}
+      return JSON.stringify({ style: subStyle, at: at });
+    }
+    return null;
+  }
+  function syncDocHasContent(key){
+    if (key === 'addons') return getAddons().length > 0;
+    if (key === 'progress') return Object.keys(getProgress()).length > 0;
+    if (key === 'library') return Object.keys(getLibrary()).length > 0;
+    if (key === 'sub_style'){ var at = 0; try { at = Number(LS.getItem('sub_style_at')) || 0; } catch(e){} return at > 0; }
+    return false;
+  }
+  function cloudPushSoon(key){
+    if (!cloudLinked() || syncApplying) return;
+    cloudDirty[key] = 1; saveCloudDirty();
+    clearTimeout(syncTimers[key]);
+    syncTimers[key] = setTimeout(function(){ cloudPush(key); }, 1500);
+  }
+  function cloudPush(key, keepalive){
+    if (!cloudLinked()) return Promise.resolve();
+    var v = syncDocFor(key);
+    if (v == null) return Promise.resolve();
+    return cloudApi('PUT', '/v1/kv/' + key, { v: v }, keepalive)
+      .then(function(r){
+        cloudRevs[key] = r.rev; saveCloudRevs();
+        if (cloudDirty[key]){ delete cloudDirty[key]; saveCloudDirty(); }
+      })
+      .catch(function(){});
+  }
+  /** Per-record newest-wins merges. Each returns whether local state changed
+      (repaint) and whether local had newer records (push back). */
+  function mergeProgress(remote){
+    var local = getProgress(), changed = false, localNewer = false;
+    Object.keys(remote).forEach(function(k){
+      var r = remote[k], l = local[k];
+      if (r && (!l || (r.at||0) > (l.at||0))){ local[k] = r; changed = true; }
+    });
+    Object.keys(local).forEach(function(k){
+      var r = remote[k];
+      if (!r || (local[k].at||0) > (r.at||0)) localNewer = true;
+    });
+    if (changed){
+      progCache = local;
+      saveProgress(true);
+      try { renderContinue(); } catch(e){}
+    }
+    return { changed: changed, localNewer: localNewer };
+  }
+  function mergeLibrary(remote){
+    var local = getLibrary(), changed = false, localNewer = false;
+    Object.keys(remote).forEach(function(k){
+      var r = remote[k], l = local[k];
+      if (r && (!l || (r.at||0) > (l.at||0))){ local[k] = r; changed = true; }
+    });
+    Object.keys(local).forEach(function(k){
+      var r = remote[k];
+      if (!r || (local[k].at||0) > (r.at||0)) localNewer = true;
+    });
+    if (changed){
+      libCache = local;
+      saveLibrary();
+      upcomingCache = { at: 0, rows: null };
+      var v = document.querySelector('.view.active');
+      if (v && v.id === 'view-library'){ try { renderLibraryTab(); } catch(e){} }
+    }
+    return { changed: changed, localNewer: localNewer };
+  }
+  function mergeAddons(remote){
+    var s = getAddonsSync();
+    var arr = getAddons();
+    var changed = false, localNewer = false;
+    var rl = remote.list || {}, rr = remote.removed || {};
+    var have = {}; arr.forEach(function(a){ have[a.url] = 1; });
+    Object.keys(rl).forEach(function(u){
+      if (have[u]){
+        if ((s.at[u]||0) > (rl[u].at||0)) localNewer = true;
+        else if ((rl[u].at||0) > (s.at[u]||0)){ s.at[u] = rl[u].at; saveAddonsSync(); }
+        return;
+      }
+      // adopt unless WE removed it more recently than they added it — a device
+      // that never removed it has no standing to reject it, whatever its stamp
+      if (!s.removed[u] || (rl[u].at||0) > s.removed[u]){
+        arr.push({ url: u, name: rl[u].name||'Add-on', base: rl[u].base||baseOf(u), logo: rl[u].logo||'' });
+        s.at[u] = rl[u].at || Date.now(); delete s.removed[u];
+        changed = true;
+      } else localNewer = true;          // our removal outdates their add
+    });
+    Object.keys(rr).forEach(function(u){
+      var i = -1; arr.forEach(function(a, idx){ if (a.url === u) i = idx; });
+      if (i !== -1){
+        if ((rr[u]||0) > (s.at[u]||0)){
+          arr.splice(i, 1); s.removed[u] = rr[u]; delete s.at[u];
+          changed = true;
+        } else localNewer = true;        // we re-added it after their removal
+      } else if ((s.removed[u]||0) > (rr[u]||0)) localNewer = true;
+    });
+    arr.forEach(function(a){ if (!rl[a.url]) localNewer = true; });
+    Object.keys(s.removed).forEach(function(u){ if (!rr[u]) localNewer = true; });
+    if (changed){
+      saveAddonsSync();
+      var json = JSON.stringify(arr);
+      try { LS.setItem('addons', json); } catch(e){}
+      mirrorAddons(json);
+      manifestCache = {};
+      try { renderAddons(); } catch(e){}
+      try { buildHomeRows(true); } catch(e){}
+    }
+    return { changed: changed, localNewer: localNewer };
+  }
+  function mergeSubStyle(remote){
+    var lAt = 0; try { lAt = Number(LS.getItem('sub_style_at')) || 0; } catch(e){}
+    var rAt = (remote && remote.at) || 0;
+    if (rAt > lAt && remote.style){
+      subStyle = normSubStyle(remote.style);
+      var json = JSON.stringify(subStyle);
+      try { LS.setItem('sub_style', json); LS.setItem('sub_style_at', String(rAt)); } catch(e){}
+      mirrorKv('sub_style', json);
+      applySubStyle();
+      return { changed: true, localNewer: false };
+    }
+    return { changed: false, localNewer: lAt > rAt };
+  }
+  function mergeKey(key, remote){
+    if (key === 'addons') return mergeAddons(remote);
+    if (key === 'progress') return mergeProgress(remote);
+    if (key === 'library') return mergeLibrary(remote);
+    if (key === 'sub_style') return mergeSubStyle(remote);
+    return { changed: false, localNewer: false };
+  }
+  function cloudPullAll(force){
+    if (!cloudLinked()) return Promise.resolve();
+    if (!force && Date.now() - lastPullAt < 45000) return Promise.resolve();
+    lastPullAt = Date.now();
+    return cloudApi('GET', '/v1/kv').then(function(res){
+      var keys = (res && res.keys) || {};
+      var work = [];
+      SYNC_KEYS.forEach(function(key){
+        var remoteMeta = keys[key];
+        if (!remoteMeta){
+          if (syncDocHasContent(key)) work.push(cloudPush(key));
+          return;
+        }
+        if (cloudRevs[key] === remoteMeta.rev){
+          // nothing new remotely — but flush anything of ours that never landed
+          if (cloudDirty[key]) work.push(cloudPush(key));
+          return;
+        }
+        work.push(cloudApi('GET', '/v1/kv/' + key).then(function(rec){
+          var remote = null; try { remote = JSON.parse(rec.v); } catch(e){}
+          if (remote == null) return;
+          var out;
+          syncApplying = true;
+          try { out = mergeKey(key, remote); } finally { syncApplying = false; }
+          cloudRevs[key] = rec.rev; saveCloudRevs();
+          if (out && out.localNewer) return cloudPush(key);
+        }).catch(function(){}));
+      });
+      return Promise.all(work);
+    }).catch(function(){});
+  }
+  // ---- sync panel ----
+  function syncPanelRender(){
+    var linked = cloudLinked();
+    $id('syncUnlinked').style.display = linked ? 'none' : '';
+    $id('syncLinked').style.display = linked ? '' : 'none';
+    if (!linked) $id('syncCodeBox').style.display = 'none';
+    $id('syncStatus').textContent = linked
+      ? 'Syncing is on — add-ons, progress, My List and subtitle style follow you between linked devices.'
+      : 'Add-ons, progress and your list stay on this device until you link another.';
+  }
+  function syncShowCode(){
+    cloudApi('POST', '/v1/link', { gid: cloudLink.gid, secret: cloudLink.secret }).then(function(r){
+      $id('syncCodeBox').style.display = '';
+      $id('syncCodeText').textContent = r.code;
+      $id('syncCodeHint').textContent = 'On the other device: Add-ons › Sync › enter this code. It works for 15 minutes.';
+    }).catch(function(){ setStatus('Could not get a link code — is the sync server reachable?','err'); });
+  }
+  function syncStart(){
+    setStatus('Setting up sync…','info');
+    cloudApi('POST', '/v1/group').then(function(g){
+      cloudLink = { gid: g.gid, secret: g.secret };
+      try { LS.setItem('cloud_link', JSON.stringify(cloudLink)); } catch(e){}
+      cloudRevs = {}; saveCloudRevs();
+      syncPanelRender();
+      SYNC_KEYS.forEach(function(k){ if (syncDocHasContent(k)) cloudPush(k); });
+      syncShowCode();
+      setStatus('Sync is on. Enter the code on your other device.','ok');
+    }).catch(function(){ setStatus('Could not reach the sync server.','err'); });
+  }
+  function syncJoin(){
+    var code = ($id('syncCodeIn').value||'').replace(/\s/g,'').toUpperCase();
+    if (code.length < 6){ setStatus('Enter the 6-character code first.','err'); return; }
+    setStatus('Linking…','info');
+    cloudApi('POST', '/v1/join', { code: code }).then(function(g){
+      cloudLink = { gid: g.gid, secret: g.secret };
+      try { LS.setItem('cloud_link', JSON.stringify(cloudLink)); } catch(e){}
+      cloudRevs = {}; saveCloudRevs();
+      $id('syncCodeIn').value = '';
+      syncPanelRender();
+      setStatus('Linked — pulling your things…','ok');
+      cloudPullAll(true);
+    }).catch(function(e){
+      setStatus(/404/.test(e.message) ? 'That code was not found — it may have expired.' : 'Could not reach the sync server.','err');
+    });
+  }
+  function syncLeave(){
+    cloudLink = null;
+    try { LS.removeItem('cloud_link'); } catch(e){}
+    cloudRevs = {}; saveCloudRevs();
+    syncPanelRender();
+    setStatus('Sync is off for this device. Nothing was deleted.','info');
+  }
+  $id('syncStart').onclick = syncStart;
+  $id('syncJoinBtn').onclick = syncJoin;
+  $id('syncShowCode').onclick = syncShowCode;
+  $id('syncLeave').onclick = syncLeave;
+  (function(){
+    var i = $id('syncCodeIn');
+    i.addEventListener('keydown', function(e){ if (e.keyCode === 13){ e.preventDefault(); syncJoin(); } });
+  })();
+  syncPanelRender();
+  document.addEventListener('visibilitychange', function(){
+    if (document.visibilityState === 'visible') cloudPullAll(false);
+  });
+  setInterval(function(){
+    if (document.visibilityState === 'visible') cloudPullAll(false);
+  }, 300000);
+
+  // ---------- local file playback ----------
+  // A blob: URL has no extension, so Shaka lives entirely off the MIME hint —
+  // and browsers report NO type for .mkv (or an x-matroska Shaka can't route).
+  // Chromium's demuxer handles mkv through the webm path, so hint that.
+  function fileMime(f){
+    if (f.type && f.type !== 'video/x-matroska') return f.type;
+    var n = (f.name||'').toLowerCase();
+    if (/\.(webm|mkv)$/.test(n)) return 'video/webm';
+    return 'video/mp4';
+  }
+  var lastFileUrl = null;
+  $id('fileBtn').onclick = function(){ $id('filePick').click(); };
+  $id('filePick').onchange = function(){
+    var f = this.files && this.files[0];
+    if (!f) return;
+    if (lastFileUrl){ try { URL.revokeObjectURL(lastFileUrl); } catch(e){} }
+    lastFileUrl = URL.createObjectURL(f);
+    clearPlayIdentity();
+    playUrl(lastFileUrl, null, f.name, [], fileMime(f));
+    this.value = '';
+  };
+
   // ---------- wire up ----------
   document.getElementById('phoneBtn').onclick = startPairing;
   document.getElementById('addAddonBtn').onclick = addAddon;
@@ -2538,15 +3635,32 @@
 
   // A TV app is usually closed by yanking power or hitting Home — persist the
   // resume point on the way out rather than only on a clean stop.
+  function flushCloudNow(){
+    // the debounced push may never fire once the page is hidden — send it now,
+    // with keepalive so the request survives the page going away
+    if (!cloudLinked()) return;
+    SYNC_KEYS.forEach(function(k){
+      if (cloudDirty[k]){ clearTimeout(syncTimers[k]); cloudPush(k, true); }
+    });
+  }
   document.addEventListener('visibilitychange', function(){
-    if (document.visibilityState === 'hidden'){ try { flushProgress(true); } catch(e){} }
+    if (document.visibilityState === 'hidden'){
+      try { flushProgress(true); } catch(e){}
+      try { flushCloudNow(); } catch(e){}
+    }
   });
-  window.addEventListener('pagehide', function(){ try { flushProgress(true); } catch(e){} });
+  window.addEventListener('pagehide', function(){
+    try { flushProgress(true); } catch(e){}
+    try { flushCloudNow(); } catch(e){}
+  });
 
   renderAddons();
   initPersistentAddons();
   initPersistentProgress();
+  initPersistentSubStyle();
+  initPersistentLibrary();
   buildHomeRows(true);
+  if (cloudLinked()) setTimeout(function(){ cloudPullAll(true); }, 900);
   setStatus(getAddons().length ? 'Welcome back.' : 'Ready. Add your add-on to begin.','info');
   focusFirst();
 })();

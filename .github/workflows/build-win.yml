@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.11.0 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.11.0 dist/*.exe \
-            --title "Nebula (Windows) v1.11.0" \
-            --notes "A new look. Nebula now uses an Apple-style interface — layered surfaces over a true-black ground, a translucent top bar, soft rounded artwork, and a highlight that lifts and enlarges what you are pointing at instead of drawing a box around it. Underneath: it remembers where you stopped, with a Continue Watching row that picks any half-finished film or episode back up at the second you left it; episodes show a tick when watched and a bar when part-way; a series keeps rolling on its own, offering the next episode near the end and playing it automatically when one finishes. Search now covers every searchable catalogue an add-on offers, so searching a show name returns shows and not just films. Catalogues load further pages as you scroll instead of stopping at the first hundred items, and lists show placeholder rows while they load. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          gh release delete v1.12.0 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.12.0 dist/*.exe \
+            --title "Nebula (Windows) v1.12.0" \
+            --notes "Your player, everywhere you watch. Every title now opens on its own page - artwork, year, runtime, rating and description - with a Play button that knows where you stopped (it reads Resume S2E4, not just Play). A My List library collects what you are watching, and saved series show their next dated episodes in an Upcoming list grouped by day. Devices now sync without an account: link this PC to your TV or browser with a 6-character code from the Add-ons tab, and add-ons, watch progress, My List and subtitle style follow you everywhere - newest change wins. Also new: play a local video file straight from the Add-ons tab, subtitle tracks are named by language instead of a raw code, and watch parties ride a faster relay with automatic fallback. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
