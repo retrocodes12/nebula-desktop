@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.13.0 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.13.0 dist/*.exe \
-            --title "Nebula (Windows) v1.13.0" \
-            --notes "Nebula opens full now and plays even fuller. First run preinstalls starter add-ons, Home leads with a featured hero board - full-bleed artwork and the title's own logo - and every title page went full-bleed with cast and credits. The playback surface itself was redesigned as a cinema title card: serif type in letterspaced caps, an italic line that speaks the player's state, whispered word controls, a hairline seek, and an ornamental frame. No accent hue - the film supplies the colour. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          gh release delete v1.14.0 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.14.0 dist/*.exe \
+            --title "Nebula (Windows) v1.14.0" \
+            --notes "One design language everywhere: the Title Card look now dresses Home and every title page as well as playback - an italic serif signature, letterspaced caps titles, hairline ticker row headers, hard-edged posters with rating badges, and word controls with underlines. Also repairs v1.13.0, which shipped with the browse-surface styles missing. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
