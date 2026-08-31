@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.12.0 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.12.0 dist/*.exe \
-            --title "Nebula (Windows) v1.12.0" \
-            --notes "Your player, everywhere you watch. Every title now opens on its own page - artwork, year, runtime, rating and description - with a Play button that knows where you stopped (it reads Resume S2E4, not just Play). A My List library collects what you are watching, and saved series show their next dated episodes in an Upcoming list grouped by day. Devices now sync without an account: link this PC to your TV or browser with a 6-character code from the Add-ons tab, and add-ons, watch progress, My List and subtitle style follow you everywhere - newest change wins. Also new: play a local video file straight from the Add-ons tab, subtitle tracks are named by language instead of a raw code, and watch parties ride a faster relay with automatic fallback. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          gh release delete v1.13.0 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.13.0 dist/*.exe \
+            --title "Nebula (Windows) v1.13.0" \
+            --notes "Nebula opens full now and plays even fuller. First run preinstalls starter add-ons, Home leads with a featured hero board - full-bleed artwork and the title's own logo - and every title page went full-bleed with cast and credits. The playback surface itself was redesigned as a cinema title card: serif type in letterspaced caps, an italic line that speaks the player's state, whispered word controls, a hairline seek, and an ornamental frame. No accent hue - the film supplies the colour. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
