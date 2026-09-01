@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.20.0 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.20.0 dist/*.exe \
-            --title "Nebula (Windows) v1.20.0" \
-            --notes "Stream badges, refined: badge art ships inside the app so badges render instantly, the row stays tidy on one line, and stream text no longer repeats what the badges already say — plus bitrate and source facts. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          gh release delete v1.21.0 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.21.0 dist/*.exe \
+            --title "Nebula (Windows) v1.21.0" \
+            --notes "A polish pass across every screen: no more clipped first cards, one clear button in search, tidier stream descriptions, badge rows that fade instead of cutting off, and stray toasts no longer follow you between screens. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
