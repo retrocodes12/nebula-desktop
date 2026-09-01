@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.38.0 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.38.0 dist/*.exe \
-            --title "Nebula (Windows) v1.38.0" \
+          gh release delete v1.39.0 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.39.0 dist/*.exe \
+            --title "Nebula (Windows) v1.39.0" \
             --notes "Plainer language: the app talks about what it does rather than listing stream formats. Support is unchanged. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
