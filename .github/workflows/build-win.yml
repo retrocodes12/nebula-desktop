@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.32.0 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.32.0 dist/*.exe \
-            --title "Nebula (Windows) v1.32.0" \
+          gh release delete v1.33.0 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.33.0 dist/*.exe \
+            --title "Nebula (Windows) v1.33.0" \
             --notes "Adds a privacy note in the Add-ons view linking to Nebula's policy: no accounts, no analytics, no tracking. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
