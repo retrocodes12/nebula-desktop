@@ -1,9 +1,9 @@
 {
   "name": "clearkey-player",
-  "version": "1.37.0",
-  "description": "ClearKey Player \u2014 add a Stremio add-on, browse it, and play HLS / DASH / DASH+ClearKey.",
+  "version": "1.38.0",
+  "description": "Nebula \u2014 add an add-on, browse it, press play. Every format, on-device.",
   "main": "main.js",
-  "author": "Nuvio ClearKey",
+  "author": "Nebula",
   "license": "GPL-3.0",
   "scripts": {
     "start": "electron .",
