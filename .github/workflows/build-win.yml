@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.43.0 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.43.0 dist/*.exe \
-            --title "Nebula (Windows) v1.43.0" \
-            --notes "Plainer language: the app talks about what it does rather than listing stream formats. Support is unchanged. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          gh release delete v1.44.0 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.44.0 dist/*.exe \
+            --title "Nebula (Windows) v1.44.0" \
+            --notes "A quieter, more premium interface: hairline panels, a mono eyebrow register, outlined chips and ghost buttons, a compact rating pill with an IMDb plate, episodes as a list, segmented settings, and dialogs that sit centred on a desktop. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
