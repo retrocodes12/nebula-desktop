@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.46.0 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.46.0 dist/*.exe \
-            --title "Nebula (Windows) v1.46.0" \
-            --notes "Pause and the screen tells you what you are watching, how long is left and what plays next. Press i for a playback-info HUD (picture, codec, connection, buffer, dropped frames). Nudge subtitle timing from the Subtitles menu, pick a picture-quality policy in Settings, and jump back to the live edge with one button. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          gh release delete v1.47.0 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.47.0 dist/*.exe \
+            --title "Nebula (Windows) v1.47.0" \
+            --notes "The next episode is chosen while this one is still playing — same source, same quality as the stream you picked — so Play now starts it without a trip through the stream list. The row matching your last pick heads its section, marked Same as last time. Lists open on their first row. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
