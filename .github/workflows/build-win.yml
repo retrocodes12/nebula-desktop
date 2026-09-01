@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.18.0 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.18.0 dist/*.exe \
-            --title "Nebula (Windows) v1.18.0" \
-            --notes "Series upgrade: the Episodes screen opens on the season you're watching with the next episode highlighted and scrolled into view, every episode shows its air date, and watched-marks refresh the moment you come back from playback. Series pages now show a season count. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          gh release delete v1.19.0 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.19.0 dist/*.exe \
+            --title "Nebula (Windows) v1.19.0" \
+            --notes "Stream cards reborn: fusion badges — real Dolby Vision, Atmos, REMUX, 4K and codec logos matched from each stream's text — with a clean facts line (size, seeders, source). Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
