@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.16.0 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.16.0 dist/*.exe \
-            --title "Nebula (Windows) v1.16.0" \
+          gh release delete v1.17.0 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.17.0 dist/*.exe \
+            --title "Nebula (Windows) v1.17.0" \
             --notes "The player now wears the Apple TV layout: frosted-glass circles for the transport and window controls, a thick fully-rounded scrubber with elapsed and remaining time, and glass pills for subtitles, audio, quality and speed. The short-lived serif look is retired; the whole app returns to its Apple language. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
