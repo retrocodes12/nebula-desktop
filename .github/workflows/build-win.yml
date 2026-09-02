@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.47.0 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.47.0 dist/*.exe \
-            --title "Nebula (Windows) v1.47.0" \
-            --notes "The next episode is chosen while this one is still playing — same source, same quality as the stream you picked — so Play now starts it without a trip through the stream list. The row matching your last pick heads its section, marked Same as last time. Lists open on their first row. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          gh release delete v1.48.0 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.48.0 dist/*.exe \
+            --title "Nebula (Windows) v1.48.0" \
+            --notes "Home is yours to arrange: Settings has a new Home panel where every catalog your add-ons offer is listed. Switch rows on or off, drag them into the order you want, and Reset when you change your mind. Home draws its rows in that order, with a Customise Home link under the last row. Search remembers your recent searches as chips, newest first, with a Clear. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
