@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.48.0 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.48.0 dist/*.exe \
-            --title "Nebula (Windows) v1.48.0" \
-            --notes "Home is yours to arrange: Settings has a new Home panel where every catalog your add-ons offer is listed. Switch rows on or off, drag them into the order you want, and Reset when you change your mind. Home draws its rows in that order, with a Customise Home link under the last row. Search remembers your recent searches as chips, newest first, with a Clear. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          gh release delete v1.49.0 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.49.0 dist/*.exe \
+            --title "Nebula (Windows) v1.49.0" \
+            --notes "Keyboards are first-class now. Press ? anywhere for a sheet of shortcuts: Space or K to play, J and L to skip ten seconds, M to mute, < and > for speed, S, A and Q for subtitles, audio and quality, N for the next episode, a digit to jump to that tenth of the film, Shift+M for the mini player, / to search and 1-5 for the tabs. Esc peels one layer at a time, and the control buttons show their keys on hover. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
