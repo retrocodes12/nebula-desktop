@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.49.0 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.49.0 dist/*.exe \
-            --title "Nebula (Windows) v1.49.0" \
-            --notes "Keyboards are first-class now. Press ? anywhere for a sheet of shortcuts: Space or K to play, J and L to skip ten seconds, M to mute, < and > for speed, S, A and Q for subtitles, audio and quality, N for the next episode, a digit to jump to that tenth of the film, Shift+M for the mini player, / to search and 1-5 for the tabs. Esc peels one layer at a time, and the control buttons show their keys on hover. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          gh release delete v1.50.0 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.50.0 dist/*.exe \
+            --title "Nebula (Windows) v1.50.0" \
+            --notes "Evenings, sorted. A sleep timer in the player (Z, or the Sleep pill) pauses after 15 to 90 minutes or when the episode you are on ends, and it rides along through the next episode. Anything you have started now offers Start over: on the streams page, and by right-clicking a Continue watching card. Series pages have Surprise me, a random episode that has aired. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
