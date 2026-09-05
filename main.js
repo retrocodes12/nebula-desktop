@@ -26,19 +26,31 @@ const TC_OK = (() => {
 ipcMain.on('tc-available', (event) => { event.returnValue = TC_OK; });
 
 const httpUrl = (u) => /^https?:\/\/[^\s"'<>]{4,2000}$/i.test(u || '');
-const NET_ARGS = ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '4', '-user_agent', 'NebulaPlayer'];
+// FFmpeg and FFprobe fetch the file as the page itself does — the same User-Agent, so a host that served the
+// player serves them too (ffmpeg's own "Lavf" name is what hosts block) — and ride out a dropped connection.
+function netArgs() {
+  let ua = 'NebulaPlayer';
+  try { ua = session.defaultSession.getUserAgent() || ua; } catch (e) {}
+  return ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '4', '-user_agent', ua];
+}
 
-// What the file holds: duration, the video codec, every audio and subtitle track.
+// What the file holds: duration, the video codec, every audio and subtitle track. When FFprobe cannot read it,
+// what the host did instead (a 403, a page) — the player turns that into a sentence.
 function probe(src, res) {
   // the track list sits in the header: a second of packets is plenty, and keeps a 25 Mbps remux from costing 16 MB per play
-  const ff = spawn(FFPROBE, ['-v', 'error', '-print_format', 'json', '-show_streams', '-show_format', '-analyzeduration', '1M', '-probesize', '5M', src], { stdio: ['ignore', 'pipe', 'pipe'] });
-  let out = '';
+  const ff = spawn(FFPROBE, ['-v', 'error', ...netArgs(), '-print_format', 'json', '-show_streams', '-show_format', '-analyzeduration', '1M', '-probesize', '5M', src], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let out = '', err = '';
   const timer = setTimeout(() => { try { ff.kill('SIGKILL'); } catch (e) {} }, 25000);
   ff.stdout.on('data', (d) => { out += d; });
+  ff.stderr.on('data', (d) => { err += d; if (err.length > 4000) err = err.slice(-4000); });
   ff.on('close', () => {
     clearTimeout(timer);
     let j = null; try { j = JSON.parse(out); } catch (e) {}
-    if (!j || !Array.isArray(j.streams)) { res.statusCode = 502; res.setHeader('Content-Type', 'application/json'); res.end('{"error":"probe failed"}'); return; }
+    if (!j || !Array.isArray(j.streams) || !j.streams.length) {
+      const http = /(?:HTTP error|Server returned) (\d{3})/.exec(err);
+      const body = { error: 'probe failed', http: http ? Number(http[1]) : 0, notmedia: /Invalid data found|does not contain any stream/i.test(err), detail: err.trim().slice(-200) };
+      res.statusCode = 502; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(body)); return;
+    }
     const v = j.streams.find((s) => s.codec_type === 'video' && !(s.disposition && s.disposition.attached_pic)) || null;
     const audio = j.streams.filter((s) => s.codec_type === 'audio').map((s, i) => ({
       i, codec: s.codec_name || '', channels: s.channels || 0, lang: (s.tags && (s.tags.language || s.tags.LANGUAGE)) || '',
@@ -63,7 +75,7 @@ function segment(q, req, res) {
   const a = Math.max(0, Number(q.get('a')) || 0), vmode = q.get('v') === 'h264' ? 'h264' : 'copy', vcodec = q.get('vc') || '';
   // -ss before -i lands on the keyframe at or before t (fast, needed for a video copy); -to with -copyts then runs the
   // piece up to the absolute time t+len, so a long keyframe gap never leaves the requested second uncovered
-  const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', ...NET_ARGS, '-ss', String(t), '-i', src, '-to', String(t + len),
+  const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', ...netArgs(), '-ss', String(t), '-i', src, '-to', String(t + len),
     '-map', '0:v:0', '-map', '0:a:' + a, '-sn', '-dn'];
   if (vmode === 'h264') args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22', '-pix_fmt', 'yuv420p', '-g', '48', '-force_key_frames', 'expr:gte(t,n_forced*2)');
   else { args.push('-c:v', 'copy'); if (/hevc|h265/i.test(vcodec)) args.push('-tag:v', 'hvc1'); }
