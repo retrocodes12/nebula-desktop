@@ -31,7 +31,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.56.0 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.56.0 dist/*.exe \
-            --title "Nebula (Windows) v1.56.0" \
-            --notes "A finish pass. Library has tabs for My List, Continue Watching and Upcoming with clear empty states, Settings sections carry titles and subtitles, screens fade into one another, loading rows shimmer, messages sit under the navigation, and Continue Watching cards show the episode, the time left and a progress bar. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
+          # the tag follows package.json, so a version bump can never re-cut the old release
+          V=$(node -p "require('./package.json').version")
+          gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
+          gh release create "v$V" dist/*.exe \
+            --title "Nebula (Windows) v$V" \
+            --notes "The Windows fix pass. Your add-ons, profile, settings and progress now survive closing the app (every launch used to start over). Files with several audio tracks offer the choice under Audio. Dropping a video file onto the window plays it. The stock menu bar and its shortcuts are gone, F11 goes fullscreen like the f key, and closing mid-playback saves your place before the window goes. Watch parties reach the relay again. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
