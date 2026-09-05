@@ -31,7 +31,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete v1.55.0 -y --cleanup-tag 2>/dev/null || true
-          gh release create v1.55.0 dist/*.exe \
-            --title "Nebula (Windows) v1.55.0" \
+          gh release delete v1.56.0 -y --cleanup-tag 2>/dev/null || true
+          gh release create v1.56.0 dist/*.exe \
+            --title "Nebula (Windows) v1.56.0" \
             --notes "A finish pass. Library has tabs for My List, Continue Watching and Upcoming with clear empty states, Settings sections carry titles and subtitles, screens fade into one another, loading rows shimmer, messages sit under the navigation, and Continue Watching cards show the episode, the time left and a progress bar. Setup is the installer; Portable runs without installing. Unsigned, so Windows SmartScreen may warn (More info -> Run anyway)."
