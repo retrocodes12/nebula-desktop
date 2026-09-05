@@ -15,6 +15,9 @@ The player itself is the one that runs on the web and on LG TVs — every featur
 [main README](https://github.com/retrocodes12/nebula-player#what-it-does) is here: pause board,
 playback HUD, instant next episode, sleep timer, profiles, friends, watch parties. On top of it:
 
+- **Audio tracks.** A file with several audio tracks (Hindi, Tamil, English in one MKV) offers
+  the choice under Audio. Chromium lists every track of an MKV or WebM; an MP4 shows only its first.
+- **Drop to play.** Drag a video file onto the window and it plays here.
 - **Mini player.** `Shift+M` (or the button in the player) shrinks the window to a 480×300
   always-on-top corner player and puts it back where it was when you leave.
 - **Keyboard.** `?` lists every shortcut: K/J/L, M, S/A/Q for the pickers, N for the next
