@@ -2,6 +2,81 @@ const { app, BrowserWindow, Menu, dialog, ipcMain, screen, session, shell } = re
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { spawn, spawnSync } = require('child_process');
+
+// ---- FFmpeg in the shell: what Chromium cannot decode (Dolby Digital / DTS / TrueHD audio,
+// HEVC without a hardware decoder) is re-encoded on the fly, the rest copied through. The
+// player asks /probe what a file holds, then pulls /seg pieces and appends them itself.
+// Bundled through ffmpeg-static + ffprobe-static (unpacked from the asar); a dev checkout
+// without them falls back to whatever is on PATH.
+function tool(name) {
+  try {
+    const mod = require(name === 'ffmpeg' ? 'ffmpeg-static' : 'ffprobe-static');
+    const p = name === 'ffmpeg' ? mod : mod.path;
+    if (p) return String(p).replace('app.asar' + path.sep, 'app.asar.unpacked' + path.sep);
+  } catch (e) {}
+  return name;
+}
+const FFMPEG = tool('ffmpeg'), FFPROBE = tool('ffprobe');
+const TC_OK = (() => {
+  if (process.env.NEBULA_NO_FFMPEG) return false;          // the rigs prove the no-converter path with this
+  try { return spawnSync(FFMPEG, ['-version'], { timeout: 5000 }).status === 0 && spawnSync(FFPROBE, ['-version'], { timeout: 5000 }).status === 0; }
+  catch (e) { return false; }
+})();
+ipcMain.on('tc-available', (event) => { event.returnValue = TC_OK; });
+
+const httpUrl = (u) => /^https?:\/\/[^\s"'<>]{4,2000}$/i.test(u || '');
+const NET_ARGS = ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '4', '-user_agent', 'NebulaPlayer'];
+
+// What the file holds: duration, the video codec, every audio and subtitle track.
+function probe(src, res) {
+  // the track list sits in the header: a second of packets is plenty, and keeps a 25 Mbps remux from costing 16 MB per play
+  const ff = spawn(FFPROBE, ['-v', 'error', '-print_format', 'json', '-show_streams', '-show_format', '-analyzeduration', '1M', '-probesize', '5M', src], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let out = '';
+  const timer = setTimeout(() => { try { ff.kill('SIGKILL'); } catch (e) {} }, 25000);
+  ff.stdout.on('data', (d) => { out += d; });
+  ff.on('close', () => {
+    clearTimeout(timer);
+    let j = null; try { j = JSON.parse(out); } catch (e) {}
+    if (!j || !Array.isArray(j.streams)) { res.statusCode = 502; res.setHeader('Content-Type', 'application/json'); res.end('{"error":"probe failed"}'); return; }
+    const v = j.streams.find((s) => s.codec_type === 'video' && !(s.disposition && s.disposition.attached_pic)) || null;
+    const audio = j.streams.filter((s) => s.codec_type === 'audio').map((s, i) => ({
+      i, codec: s.codec_name || '', channels: s.channels || 0, lang: (s.tags && (s.tags.language || s.tags.LANGUAGE)) || '',
+      title: (s.tags && (s.tags.title || s.tags.TITLE)) || '', dflt: !!(s.disposition && s.disposition.default),
+    }));
+    const subs = j.streams.filter((s) => s.codec_type === 'subtitle').map((s, i) => ({ i, codec: s.codec_name || '', lang: (s.tags && s.tags.language) || '', title: (s.tags && s.tags.title) || '' }));
+    const body = {
+      duration: Number((j.format && j.format.duration) || (v && v.duration) || 0) || 0,
+      video: v ? { codec: v.codec_name || '', width: v.width || 0, height: v.height || 0, profile: v.profile || '', pix_fmt: v.pix_fmt || '', transfer: v.color_transfer || '' } : null,
+      audio, subs,
+    };
+    res.setHeader('Content-Type', 'application/json'); res.setHeader('Cache-Control', 'no-store'); res.end(JSON.stringify(body));
+  });
+}
+
+// One piece of the file from second `t`, `len` seconds long, as fragmented MP4 with the ORIGINAL
+// timestamps kept (-copyts), so the player can drop it straight onto its timeline. Video is
+// copied unless `v=h264` asks for a re-encode; audio track `a` becomes stereo AAC.
+function segment(q, req, res) {
+  const src = q.get('src') || '';
+  const t = Math.max(0, Number(q.get('t')) || 0), len = Math.min(30, Math.max(2, Number(q.get('len')) || 10));
+  const a = Math.max(0, Number(q.get('a')) || 0), vmode = q.get('v') === 'h264' ? 'h264' : 'copy', vcodec = q.get('vc') || '';
+  // -ss before -i lands on the keyframe at or before t (fast, needed for a video copy); -to with -copyts then runs the
+  // piece up to the absolute time t+len, so a long keyframe gap never leaves the requested second uncovered
+  const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', ...NET_ARGS, '-ss', String(t), '-i', src, '-to', String(t + len),
+    '-map', '0:v:0', '-map', '0:a:' + a, '-sn', '-dn'];
+  if (vmode === 'h264') args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22', '-pix_fmt', 'yuv420p', '-g', '48', '-force_key_frames', 'expr:gte(t,n_forced*2)');
+  else { args.push('-c:v', 'copy'); if (/hevc|h265/i.test(vcodec)) args.push('-tag:v', 'hvc1'); }
+  args.push('-c:a', 'aac', '-ac', '2', '-b:a', '192k', '-copyts', '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+default_base_moof', '-frag_duration', '1000000', 'pipe:1');
+  const ff = spawn(FFMPEG, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  let err = '';
+  ff.stderr.on('data', (d) => { err += d; if (err.length > 4000) err = err.slice(-4000); });
+  res.writeHead(200, { 'Content-Type': 'video/mp4', 'Cache-Control': 'no-store' });
+  ff.stdout.pipe(res);
+  const kill = () => { try { ff.kill('SIGKILL'); } catch (e) {} };
+  req.on('close', kill);
+  ff.on('close', (code) => { if (code && !res.writableEnded) { try { res.destroy(); } catch (e) {} } if (code) console.error('ffmpeg seg exit', code, err.trim().slice(-300)); });
+}
 
 // Chromium only exposes a plain file's audio tracks (video.audioTracks — the Hindi /
 // Tamil / English choices inside one MKV) behind this Blink feature. The player already
@@ -25,6 +100,14 @@ function startServer() {
   };
   const handler = (req, res) => {
     try {
+      const u = new URL(req.url || '/', 'http://127.0.0.1');
+      if (u.pathname === '/probe' || u.pathname === '/seg') {
+        const src = u.searchParams.get('src') || '';
+        if (!TC_OK) { res.statusCode = 501; res.end('no ffmpeg'); return; }
+        if (!httpUrl(src)) { res.statusCode = 400; res.end('bad src'); return; }
+        if (u.pathname === '/probe') probe(src, res); else segment(u.searchParams, req, res);
+        return;
+      }
       let p = decodeURIComponent((req.url || '/').split('?')[0]);
       if (p === '/' || p === '') p = '/index.html';
       const file = path.normalize(path.join(root, p));
