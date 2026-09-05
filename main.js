@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, screen, session, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, net, screen, session, shell } = require('electron');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -88,6 +88,183 @@ function segment(q, req, res) {
   const kill = () => { try { ff.kill('SIGKILL'); } catch (e) {} };
   req.on('close', kill);
   ff.on('close', (code) => { if (code && !res.writableEnded) { try { res.destroy(); } catch (e) {} } if (code) console.error('ffmpeg seg exit', code, err.trim().slice(-300)); });
+}
+
+// ---- In-app update. The installer build asks GitHub for the newest release through electron-updater:
+// the latest.yml beside the installer names the file and its sha512, the blockmap makes the download
+// differential, and the installer runs silently on restart into the same folder. The portable build
+// cannot be replaced by an installer: it downloads the new portable exe beside the running one, steps
+// its own file aside (Windows lets a running exe be renamed, not overwritten), gives the new file its
+// name and starts it once this process has gone. A dev checkout does neither.
+// NEBULA_UPDATE_FEED=<url> points both kinds at a local feed (the rigs); NEBULA_UPDATE_DELAY=<ms> moves the first check.
+const UPDATE_REPO = 'https://github.com/retrocodes12/nebula-desktop';
+const PORTABLE_FILE = process.env.PORTABLE_EXECUTABLE_FILE || '';
+const UPDATE_FEED = process.env.NEBULA_UPDATE_FEED || '';
+// (app.getVersion() is package.json's version for the packaged app and for `electron <app dir>`; a dev run of
+// `electron main.js` gets Electron's own — that run is kind 'dev' and never checks)
+const upd = {
+  kind: PORTABLE_FILE ? 'portable' : ((app.isPackaged || UPDATE_FEED) ? 'setup' : 'dev'),
+  version: app.getVersion(), state: 'idle', latest: '', notes: '', percent: 0, transferred: 0, total: 0, file: '', error: '', manual: false,
+};
+let mainWin = null;
+function updSet(patch) {
+  Object.assign(upd, patch);
+  try { if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('nebula:update', upd); } catch (e) {}
+  return upd;
+}
+// a newer than b, on the three numbers (a leading "v" ignored)
+function newerVersion(a, b) {
+  const pa = String(a).replace(/^v/, '').split('.').map(Number), pb = String(b).replace(/^v/, '').split('.').map(Number);
+  for (let i = 0; i < 3; i++) { const x = pa[i] || 0, y = pb[i] || 0; if (x !== y) return x > y; }
+  return false;
+}
+function updErrorText(e) {
+  const code = (e && e.code) || '', msg = String((e && e.message) || e || '');
+  if (/ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|net::ERR|fetch failed/i.test(code + ' ' + msg)) return 'No connection to the update server.';
+  if (/ERR_UPDATER_(LATEST_VERSION_NOT_FOUND|CHANNEL_FILE_NOT_FOUND|NO_PUBLISHED_VERSIONS)/.test(code) || /HTTP 404/.test(msg)) return 'The update server has no release to offer.';
+  if (/sha512|checksum/i.test(msg)) return 'The download did not match its checksum. Try again.';
+  return 'Could not update: ' + msg.split('\n')[0].slice(0, 140);
+}
+// the release body from GitHub arrives as HTML; one plain sentence of it is enough for a banner
+function notesText(rn) {
+  const s = Array.isArray(rn) ? rn.map((n) => (n && n.note) || '').join(' ') : String(rn || '');
+  return s.replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;|&#\d+;/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+}
+// a per-machine install (Program Files, chosen in the assisted installer) needs elevation for a silent update:
+// Windows will ask, so the player says so before the restart. A per-user install and the portable build never do.
+const ELEVATED = (() => {
+  if (process.platform !== 'win32' || !app.isPackaged || PORTABLE_FILE) return false;
+  try { const p = path.join(path.dirname(process.execPath), '.nebula-write-test'); fs.writeFileSync(p, ''); fs.unlinkSync(p); return false; } catch (e) { return true; }
+})();
+upd.elevated = ELEVATED;
+let updater = null;
+function getUpdater() {
+  if (updater) return updater;
+  const { autoUpdater } = require('electron-updater');
+  autoUpdater.autoDownload = false;
+  // never on a plain quit: that install runs with no relaunch, and a person who reopens Nebula inside those seconds
+  // gets the fresh instance killed by the installer. The Restart button is the one way in (--force-run relaunches).
+  autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.logger = null;
+  if (UPDATE_FEED) { autoUpdater.forceDevUpdateConfig = true; autoUpdater.setFeedURL({ provider: 'generic', url: UPDATE_FEED }); }
+  autoUpdater.on('checking-for-update', () => updSet({ state: 'checking', error: '' }));
+  autoUpdater.on('update-available', (info) => updSet({ state: 'available', latest: info.version, notes: notesText(info.releaseNotes) }));
+  autoUpdater.on('update-not-available', (info) => updSet({ state: 'current', latest: info.version }));
+  autoUpdater.on('download-progress', (p) => updSet({ state: 'downloading', percent: Math.min(100, Math.round(p.percent || 0)), transferred: p.transferred || 0, total: p.total || 0 }));
+  autoUpdater.on('update-downloaded', (info) => updSet({ state: 'ready', latest: info.version, file: info.downloadedFile || '', percent: 100 }));
+  autoUpdater.on('error', (e) => updSet({ state: 'error', error: updErrorText(e) }));
+  updater = autoUpdater;
+  return updater;
+}
+const PORTABLE_DIR = PORTABLE_FILE ? path.dirname(PORTABLE_FILE) : '';
+const feedUrl = (name) => (UPDATE_FEED ? new URL(name, UPDATE_FEED).toString() : `${UPDATE_REPO}/releases/latest/download/${name}`);
+async function portableCheck() {
+  updSet({ state: 'checking', error: '' });
+  try {
+    const r = await net.fetch(feedUrl('latest.yml'), { headers: { 'Cache-Control': 'no-cache' } });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const m = /^version:\s*['"]?(\d[^\s'"]*)/m.exec(await r.text());
+    if (!m) throw new Error('no version in latest.yml');
+    if (newerVersion(m[1], upd.version)) updSet({ state: 'available', latest: m[1], notes: '' });
+    else updSet({ state: 'current', latest: m[1] });
+  } catch (e) { updSet({ state: 'error', error: updErrorText(e) }); }
+  return upd;
+}
+async function portableDownload() {
+  const ver = upd.latest, dest = path.join(PORTABLE_DIR, 'Nebula-Portable.new.exe'), part = dest + '.part';
+  updSet({ state: 'downloading', percent: 0, transferred: 0, total: 0 });
+  let reader = null, out = null;
+  try {
+    // pinned to the tag the check saw (the CI names it v<version>): "latest" can point at the previous release for a
+    // minute while a release is re-cut, and this must never install a version other than the one the banner named
+    const r = await net.fetch(UPDATE_FEED ? feedUrl('Nebula-Portable.exe') : `${UPDATE_REPO}/releases/download/v${ver}/Nebula-Portable.exe`);
+    if (!r.ok || !r.body) throw new Error('HTTP ' + r.status);
+    const total = Number(r.headers.get('content-length')) || 0;
+    out = fs.createWriteStream(part);
+    // a folder the person cannot write to, or a full disk, fails the stream: that must reach the catch, not hang the loop
+    const failed = new Promise((_, no) => out.once('error', no));
+    reader = r.body.getReader();
+    let got = 0, last = 0;
+    while (true) {
+      const { done, value } = await Promise.race([reader.read(), failed]);
+      if (done) break;
+      got += value.length;
+      if (!out.write(Buffer.from(value))) await Promise.race([new Promise((ok) => out.once('drain', ok)), failed]);
+      if (Date.now() - last > 250) { last = Date.now(); updSet({ state: 'downloading', percent: total ? Math.min(99, Math.round(got * 100 / total)) : 0, transferred: got, total }); }
+    }
+    await Promise.race([new Promise((ok) => out.end(ok)), failed]);
+    if (total && got !== total) throw new Error('the download stopped short');
+    fs.renameSync(part, dest);
+    updSet({ state: 'ready', latest: ver, file: dest, percent: 100, transferred: got, total });
+  } catch (e) {
+    try { if (reader) reader.cancel(); } catch (e2) {}
+    try { if (out) out.destroy(); } catch (e2) {}
+    try { fs.unlinkSync(part); } catch (e2) {}
+    updSet({ state: 'error', error: updErrorText(e) });
+  }
+  return upd;
+}
+function portableInstall() {
+  const old = PORTABLE_FILE.replace(/\.exe$/i, '') + '.old.exe';
+  try {
+    try { fs.unlinkSync(old); } catch (e) {}
+    fs.renameSync(PORTABLE_FILE, old);
+    try { fs.renameSync(upd.file, PORTABLE_FILE); } catch (e) { fs.renameSync(old, PORTABLE_FILE); throw e; }
+  } catch (e) {
+    // could not swap: the new file is there for the person to open by hand
+    try { shell.showItemInFolder(upd.file); } catch (e2) {}
+    updSet({ state: 'error', error: 'Nebula could not replace itself. The new version is saved beside it as ' + path.basename(upd.file) + ' — close Nebula and open that file.' });
+    return upd;
+  }
+  updSet({ state: 'installing' });
+  // the new file starts a few seconds later, when this process (and its single-instance lock) should be gone; the
+  // delay is `ping`, because `timeout` refuses to run without a console and this child has none. If the old process
+  // is still letting go, the new one keeps asking for the lock for a while (see acquireLock — the .old.exe is its cue).
+  try {
+    const child = spawn('cmd.exe', ['/d', '/c', 'ping -n 4 127.0.0.1 >nul & start "" "' + PORTABLE_FILE + '"'],
+      { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true });
+    child.on('error', () => {});   // no shell to start it with: the swap is done, the person opens Nebula as usual
+    child.unref();
+  } catch (e) {}
+  setTimeout(() => app.quit(), 300);
+  return upd;
+}
+async function updCheck(manual) {
+  if (upd.kind === 'dev' || upd.state === 'checking' || upd.state === 'downloading' || upd.state === 'ready' || upd.state === 'installing') return upd;
+  upd.manual = !!manual;
+  if (upd.kind === 'portable') return portableCheck();
+  try { await getUpdater().checkForUpdates(); } catch (e) { updSet({ state: 'error', error: updErrorText(e) }); }
+  return upd;
+}
+async function updDownload() {
+  if (upd.kind === 'dev' || upd.state === 'downloading' || upd.state === 'ready' || upd.state === 'installing') return upd;
+  upd.manual = true;                               // a person asked: a failure may be said out loud
+  if (upd.state !== 'available') { await updCheck(true); if (upd.state !== 'available') return upd; }
+  if (upd.kind === 'portable') return portableDownload();
+  updSet({ state: 'downloading', percent: 0, transferred: 0, total: 0 });
+  try { await getUpdater().downloadUpdate(); } catch (e) { updSet({ state: 'error', error: updErrorText(e) }); }
+  return upd;
+}
+function updInstall() {
+  if (upd.state !== 'ready') return upd;
+  upd.manual = true;
+  if (upd.kind === 'portable') return portableInstall();
+  updSet({ state: 'installing' });
+  // silent install into the same folder, then the installer starts the new Nebula
+  setImmediate(() => { try { getUpdater().quitAndInstall(true, true); } catch (e) { updSet({ state: 'error', error: updErrorText(e) }); } });
+  return upd;
+}
+ipcMain.on('update-info', (event) => { event.returnValue = upd; });
+ipcMain.handle('update-check', () => updCheck(true));
+ipcMain.handle('update-download', () => updDownload());
+ipcMain.handle('update-install', () => updInstall());
+function updSchedule() {
+  if (upd.kind === 'dev') return;
+  if (PORTABLE_FILE) { try { fs.unlinkSync(PORTABLE_FILE.replace(/\.exe$/i, '') + '.old.exe'); } catch (e) {} }   // the file we stepped aside from last time
+  const first = Number(process.env.NEBULA_UPDATE_DELAY) || 8000;
+  setTimeout(() => updCheck(false), first);
+  // a version already found stays found: an offline re-check must not turn "1.62.0 is available" into an error
+  setInterval(() => { if (upd.state === 'idle' || upd.state === 'current' || upd.state === 'error') updCheck(false); }, 6 * 3600 * 1000);
 }
 
 // Chromium only exposes a plain file's audio tracks (video.audioTracks — the Hindi /
@@ -227,6 +404,8 @@ async function createWindow() {
   });
 
   win.loadURL(`http://127.0.0.1:${port}/index.html`);
+  mainWin = win;
+  updSchedule();
   // a second launch (double-clicked the icon again) brings this window forward
   app.on('second-instance', () => {
     if (win.isDestroyed()) return;
@@ -236,10 +415,21 @@ async function createWindow() {
 }
 
 // Only one Nebula at a time: a second copy would take the next port and see an empty
-// library. Hand its launch to the running window instead.
-if (!app.requestSingleInstanceLock()) {
-  app.quit();
-} else {
+// library. Hand its launch to the running window instead — except right after the portable
+// build swapped itself (its .old.exe sibling is still there): that launch IS the relaunch, and
+// the old process may still be letting go of the lock, so keep asking for a few seconds.
+const RELAUNCHED = !!(PORTABLE_FILE && fs.existsSync(PORTABLE_FILE.replace(/\.exe$/i, '') + '.old.exe'));
+async function acquireLock() {
+  if (app.requestSingleInstanceLock()) return true;
+  if (!RELAUNCHED) return false;
+  for (let i = 0; i < 40; i++) {
+    await new Promise((ok) => setTimeout(ok, 250));
+    if (app.requestSingleInstanceLock()) return true;
+  }
+  return false;
+}
+acquireLock().then((got) => {
+  if (!got) { app.quit(); return; }
   // No stock File/Edit/View bar (Alt used to reveal it) and none of its shortcuts:
   // Ctrl+R restarted the stream, Ctrl+W closed the window, F11 fought the player's own fullscreen.
   Menu.setApplicationMenu(null);
@@ -250,4 +440,4 @@ if (!app.requestSingleInstanceLock()) {
   // Without this, closing the window leaves Nebula (and its local server) running forever.
   app.on('window-all-closed', () => app.quit());
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
-}
+});

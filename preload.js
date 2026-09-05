@@ -6,8 +6,17 @@ const { contextBridge, ipcRenderer } = require('electron');
 //   onFlush(cb)             — the window is closing: write progress and push the cloud NOW
 //   transcode               — true when the shell has FFmpeg: /probe and /seg on this origin
 //                             turn files Chromium cannot decode into pieces it can
+//   update                  — the in-app updater: info (kind setup|portable|dev, version), check() /
+//                             download() / install() each answer with the state, on(cb) streams it
 contextBridge.exposeInMainWorld('nebulaDesktop', {
   setMiniMode: (on) => ipcRenderer.invoke('mini-mode', !!on),
   onFlush: (cb) => { ipcRenderer.on('nebula:flush', () => { try { cb(); } catch (e) {} }); },
   transcode: ipcRenderer.sendSync('tc-available') === true,
+  update: {
+    info: ipcRenderer.sendSync('update-info'),
+    check: () => ipcRenderer.invoke('update-check'),
+    download: () => ipcRenderer.invoke('update-download'),
+    install: () => ipcRenderer.invoke('update-install'),
+    on: (cb) => { ipcRenderer.on('nebula:update', (_event, state) => { try { cb(state); } catch (e) {} }); },
+  },
 });
