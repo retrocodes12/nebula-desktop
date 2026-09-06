@@ -96,14 +96,34 @@ function segment(q, req, res) {
 // cannot be replaced by an installer: it downloads the new portable exe beside the running one, steps
 // its own file aside (Windows lets a running exe be renamed, not overwritten), gives the new file its
 // name and starts it once this process has gone. A dev checkout does neither.
-// NEBULA_UPDATE_FEED=<url> points both kinds at a local feed (the rigs); NEBULA_UPDATE_DELAY=<ms> moves the first check.
+// On Linux the same electron-updater does both shapes from latest-linux.yml (which lists BOTH files):
+// the AppImage is swapped for the new one in place and restarted, the .deb is handed to dpkg, which
+// asks for a password first. An unpacked build is neither and takes the web path like a dev checkout.
+// NEBULA_UPDATE_FEED=<url> points every kind at a local feed (the rigs); NEBULA_UPDATE_DELAY=<ms> moves the first check.
 const UPDATE_REPO = 'https://github.com/retrocodes12/nebula-desktop';
 const PORTABLE_FILE = process.env.PORTABLE_EXECUTABLE_FILE || '';
+const APPIMAGE_FILE = process.env.APPIMAGE || '';
 const UPDATE_FEED = process.env.NEBULA_UPDATE_FEED || '';
+// electron-builder writes resources/package-type into the deb and rpm builds, and electron-updater
+// reads that same file to choose its installer — so it is also the honest answer to "how was this installed".
+const PACKAGE_TYPE = (() => {
+  try { return fs.readFileSync(path.join(process.resourcesPath, 'package-type'), 'utf8').trim(); } catch (e) { return ''; }
+})();
+// How this copy can replace itself. 'dev' never checks: a checkout, or a build unpacked by hand
+// (a tar.gz, `--dir`), which has no path back to a release and takes the player's web nudge instead.
+const UPDATE_KIND = (() => {
+  if (PORTABLE_FILE) return 'portable';        // the Windows portable exe names itself in the environment
+  if (APPIMAGE_FILE) return 'appimage';        // so does the AppImage runtime
+  if (PACKAGE_TYPE === 'deb') return 'deb';
+  if (!app.isPackaged && !UPDATE_FEED) return 'dev';
+  // packaged with nothing above to say how: a Windows install, or a Linux build unpacked by hand, which
+  // has no release to go back to. (UPDATE_FEED is the rigs pointing a build at a local feed — it checks.)
+  return (process.platform === 'linux' && !UPDATE_FEED) ? 'dev' : 'setup';
+})();
 // (app.getVersion() is package.json's version for the packaged app and for `electron <app dir>`; a dev run of
 // `electron main.js` gets Electron's own — that run is kind 'dev' and never checks)
 const upd = {
-  kind: PORTABLE_FILE ? 'portable' : ((app.isPackaged || UPDATE_FEED) ? 'setup' : 'dev'),
+  kind: UPDATE_KIND, plat: process.platform === 'win32' ? 'windows' : (process.platform === 'linux' ? 'linux' : ''),
   version: app.getVersion(), state: 'idle', latest: '', notes: '', percent: 0, transferred: 0, total: 0, file: '', error: '', manual: false,
 };
 let mainWin = null;
@@ -132,7 +152,9 @@ function notesText(rn) {
 }
 // a per-machine install (Program Files, chosen in the assisted installer) needs elevation for a silent update:
 // Windows will ask, so the player says so before the restart. A per-user install and the portable build never do.
+// The .deb is always in this class: dpkg writes to /opt, so the update runs through pkexec or sudo.
 const ELEVATED = (() => {
+  if (UPDATE_KIND === 'deb') return true;
   if (process.platform !== 'win32' || !app.isPackaged || PORTABLE_FILE) return false;
   try { const p = path.join(path.dirname(process.execPath), '.nebula-write-test'); fs.writeFileSync(p, ''); fs.unlinkSync(p); return false; } catch (e) { return true; }
 })();

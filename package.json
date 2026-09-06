@@ -1,13 +1,15 @@
 {
   "name": "clearkey-player",
-  "version": "1.61.0",
+  "version": "1.62.0",
   "description": "Nebula — add an add-on, browse it, press play. Every format, on-device.",
   "main": "main.js",
   "author": "Nebula",
   "license": "GPL-3.0",
+  "homepage": "https://play.rifflehq.in",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win --publish never"
+    "dist": "electron-builder --win --publish never",
+    "dist:linux": "electron-builder --linux --publish never"
   },
   "devDependencies": {
     "electron": "^31.7.6",
@@ -50,6 +52,55 @@
     },
     "portable": {
       "artifactName": "Nebula-Portable.exe"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icons",
+      "executableName": "nebula",
+      "category": "AudioVideo;Video;Player",
+      "maintainer": "Nebula <88876293+retrocodes12@users.noreply.github.com>",
+      "synopsis": "Add an add-on, browse it, press play",
+      "description": "Nebula plays what your add-ons offer: catalogs, films and series, subtitles, and encrypted streams decrypted on the device. Files this build cannot decode on its own are converted as they play.",
+      "artifactName": "Nebula.${ext}",
+      "desktop": {
+        "Keywords": "video;player;streaming;",
+        "StartupWMClass": "clearkey-player"
+      },
+      "files": [
+        "main.js",
+        "preload.js",
+        "renderer/**/*",
+        "!node_modules/ffprobe-static/bin/{darwin,win32}/**",
+        "!node_modules/ffprobe-static/bin/linux/ia32/**"
+      ]
+    },
+    "deb": {
+      "packageName": "nebula",
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0",
+        "libasound2",
+        "xdg-utils"
+      ]
     },
     "asarUnpack": [
       "node_modules/ffmpeg-static/**",

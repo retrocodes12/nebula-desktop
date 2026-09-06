@@ -1,13 +1,18 @@
-# Nebula for Windows
+# Nebula for the desktop
 
 The desktop surface of [Nebula](https://github.com/retrocodes12/nebula-player), a streaming
 player for the TV, the desktop and the phone. A thin Electron shell around the shared player:
 add your add-on, browse its catalogs, press play. Encrypted streams are decrypted on the device
-itself.
+itself. Windows 10 and 11, or a 64-bit Linux desktop.
 
-**Site:** https://play.rifflehq.in ·
-**Installer:** [Nebula-Setup.exe](https://github.com/retrocodes12/nebula-desktop/releases/latest/download/Nebula-Setup.exe) ·
-**Portable:** [Nebula-Portable.exe](https://github.com/retrocodes12/nebula-desktop/releases/latest/download/Nebula-Portable.exe)
+**Site:** https://play.rifflehq.in
+
+| | | |
+|---|---|---|
+| **Windows** | [Nebula-Setup.exe](https://github.com/retrocodes12/nebula-desktop/releases/latest/download/Nebula-Setup.exe) | installer |
+| | [Nebula-Portable.exe](https://github.com/retrocodes12/nebula-desktop/releases/latest/download/Nebula-Portable.exe) | runs without installing |
+| **Linux** | [Nebula.AppImage](https://github.com/retrocodes12/nebula-desktop/releases/latest/download/Nebula.AppImage) | `chmod +x` it and open it |
+| | [Nebula.deb](https://github.com/retrocodes12/nebula-desktop/releases/latest/download/Nebula.deb) | `sudo apt install ./Nebula.deb` |
 
 ## What the desktop adds
 
@@ -26,26 +31,32 @@ playback HUD, instant next episode, sleep timer, profiles, friends, watch partie
 - **Local serving.** The renderer is served from a loopback HTTP server inside the app, so the
   player runs under the same rules as the web build; external links open in your browser.
 - **Clean exit.** Closing the window quits the app and its server — nothing lingers in the tray.
+- **It updates itself.** Every build looks for a new release when it starts and every six hours,
+  and installs it on restart: the installer silently, the portable exe by swapping its own file,
+  the AppImage the same way, the .deb through `dpkg` (which asks for your password). A build
+  unpacked by hand updates itself no more than a checkout does — the player links to the release.
 
 ## Repo layout
 
 ```
-main.js          window, loopback server, mini-mode IPC, quit-on-close, external-link policy
-preload.js       contextBridge: window.nebulaDesktop.setMiniMode(on)
+main.js          window, loopback server, FFmpeg /probe + /seg, the updater, mini-mode IPC
+preload.js       contextBridge: window.nebulaDesktop (mini mode, flush, transcode, update)
 renderer/        the shared player (a copy of nebula-player/webos-player/index.html + assets)
 build/           icons
-.github/workflows/build-win.yml   builds and publishes a release on every push to main
+.github/workflows/build-desktop.yml   builds Windows and Linux, then cuts one release per push to main
 ```
 
 ## Building
 
-Releases are built by GitHub Actions on `windows-latest` (`npm run dist` → electron-builder,
-NSIS installer + portable exe) and published on every push to `main`. Locally:
+Releases are built by GitHub Actions on every push to `main`: `windows-latest` builds the NSIS
+installer and the portable exe, `ubuntu-latest` builds the AppImage and the .deb, and a third job
+puts all of it in one release. Locally:
 
 ```
 npm install
-npm start          # run against renderer/
-npm run dist       # Windows installer + portable into dist/
+npm start            # run against renderer/
+npm run dist         # Windows installer + portable into dist/
+npm run dist:linux   # AppImage + deb into dist/
 ```
 
 The renderer is never edited here — changes land in `nebula-player/webos-player/index.html` and
