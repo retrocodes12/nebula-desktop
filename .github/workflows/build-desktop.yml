@@ -97,11 +97,13 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          Nebula runs on Linux from this version. The AppImage needs no install: download it, allow it to run as a program, and open it. The .deb installs it like any other app, with a menu entry. Both update themselves the way the Windows build does: the app looks for a new version when it starts and every few hours, shows a banner and a row under Settings > About, and installs it on restart. The .deb asks for your password at that point, because it is installed for the whole machine.
+          A fix pass, in the app and in the player it carries.
 
-          On Windows, Setup is the installer and Portable runs without installing. Neither is signed, so SmartScreen may warn the first time (More info, then Run anyway). This is the first release that Windows 1.61.0 can install by itself.
+          The app no longer closes when its converter cannot start — a failed start now reports itself and playback carries on with everything else. Only Nebula's own page can ask the app to convert a file; a page open in your browser cannot reach it any more.
 
-          From 1.60.0: a file the app cannot decode is converted as it plays instead of ending in an error, and a stream that really cannot play says what its host did. From 1.59.0: files with Dolby Digital, Dolby Digital Plus, DTS or TrueHD audio play with sound.
+          In the player: Autoplay next episode set to Off now really stops it, series whose ids carry a prefix open the right title from Continue watching, and an add-on's install link can be pasted straight in.
+
+          Linux: the AppImage needs no install — download it, allow it to run as a program, and open it. The .deb installs it like any other app, with a menu entry, and asks for your password when it updates itself. On Windows, Setup is the installer and Portable runs without installing; neither is signed, so SmartScreen may warn the first time (More info, then Run anyway). Every build updates itself from here on.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
