@@ -97,13 +97,13 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          A fix pass, in the app and in the player it carries.
+          Sound, on files that carry more than one soundtrack.
 
-          The app no longer closes when its converter cannot start — a failed start now reports itself and playback carries on with everything else. Only Nebula's own page can ask the app to convert a file; a page open in your browser cannot reach it any more.
+          A film often ships its main 5.1 soundtrack in a format this app has to convert, alongside a second track — a commentary, or a stereo mix — in one the app plays as it is. Until now the app looked only at the first track it found: if that one played, it left the file alone, and the browser engine underneath quietly dropped the main soundtrack. You got the commentary, the Audio menu listed nothing else, and there was no way to reach the track you actually wanted. Now the app converts a file whenever any of its soundtracks needs it, lists every track, and starts on the one the film marks as its main.
 
-          In the player: Autoplay next episode set to Off now really stops it, series whose ids carry a prefix open the right title from Continue watching, and an add-on's install link can be pasted straight in.
+          Two smaller ones alongside it: files with MPEG layer II or Apple Lossless audio now convert instead of playing silently, and a 10-bit HEVC video is handled as 10-bit rather than being handed to a decoder that only takes 8-bit and stalling part way through.
 
-          Linux: the AppImage needs no install — download it, allow it to run as a program, and open it. The .deb installs it like any other app, with a menu entry, and asks for your password when it updates itself. On Windows, Setup is the installer and Portable runs without installing; neither is signed, so SmartScreen may warn the first time (More info, then Run anyway). Every build updates itself from here on.
+          Linux: the AppImage needs no install — download it, allow it to run as a program, and open it. The .deb installs it like any other app, with a menu entry, and asks for your password when it updates itself. On Windows, Setup is the installer and Portable runs without installing; neither is signed, so SmartScreen may warn the first time (More info, then Run anyway).
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
