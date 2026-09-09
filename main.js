@@ -43,8 +43,17 @@ function probe(src, res) {
   const timer = setTimeout(() => { try { ff.kill('SIGKILL'); } catch (e) {} }, 25000);
   ff.stdout.on('data', (d) => { out += d; });
   ff.stderr.on('data', (d) => { err += d; if (err.length > 4000) err = err.slice(-4000); });
+  // a spawn that fails (the binary gone or busy while an update replaces the unpacked files, no file
+  // descriptors left) emits 'error' — unhandled, that is an uncaught exception in the main process
+  ff.on('error', (e) => {
+    clearTimeout(timer);
+    if (res.headersSent) return;
+    res.statusCode = 502; res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ error: 'probe failed', http: 0, notmedia: false, detail: 'ffprobe could not start: ' + (e && e.message || e) }));
+  });
   ff.on('close', () => {
     clearTimeout(timer);
+    if (res.headersSent) return;
     let j = null; try { j = JSON.parse(out); } catch (e) {}
     if (!j || !Array.isArray(j.streams) || !j.streams.length) {
       const http = /(?:HTTP error|Server returned) (\d{3})/.exec(err);
@@ -87,6 +96,7 @@ function segment(q, req, res) {
   ff.stdout.pipe(res);
   const kill = () => { try { ff.kill('SIGKILL'); } catch (e) {} };
   req.on('close', kill);
+  ff.on('error', (e) => { console.error('ffmpeg seg spawn', e && e.message || e); try { res.destroy(); } catch (e2) {} });   // never an uncaught exception
   ff.on('close', (code) => { if (code && !res.writableEnded) { try { res.destroy(); } catch (e) {} } if (code) console.error('ffmpeg seg exit', code, err.trim().slice(-300)); });
 }
 
@@ -313,6 +323,11 @@ function startServer() {
     try {
       const u = new URL(req.url || '/', 'http://127.0.0.1');
       if (u.pathname === '/probe' || u.pathname === '/seg') {
+        // only the player's own page may drive FFmpeg: a browser stamps a request from any other site
+        // (a page open in Chrome aiming at this fixed loopback port) as cross-site / same-site / none,
+        // while a non-browser caller on this machine sends no such header and already has the machine
+        const sfs = String(req.headers['sec-fetch-site'] || '');
+        if (sfs && sfs !== 'same-origin') { res.statusCode = 403; res.end('forbidden'); return; }
         const src = u.searchParams.get('src') || '';
         if (!TC_OK) { res.statusCode = 501; res.end('no ffmpeg'); return; }
         if (!httpUrl(src)) { res.statusCode = 400; res.end('bad src'); return; }
@@ -322,7 +337,7 @@ function startServer() {
       let p = decodeURIComponent((req.url || '/').split('?')[0]);
       if (p === '/' || p === '') p = '/index.html';
       const file = path.normalize(path.join(root, p));
-      if (!file.startsWith(root) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+      if (!file.startsWith(root + path.sep) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {   // root + sep: a sibling "renderer-x" is not inside
         res.statusCode = 404; res.end('not found'); return;
       }
       res.setHeader('Content-Type', mime[path.extname(file).toLowerCase()] || 'application/octet-stream');
