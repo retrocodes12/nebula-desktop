@@ -21,6 +21,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "relay.js",
       "renderer/**/*"
     ],
     "directories": {
@@ -82,6 +83,7 @@
       "files": [
         "main.js",
         "preload.js",
+        "relay.js",
         "renderer/**/*",
         "!node_modules/ffprobe-static/bin/{darwin,win32}/**",
         "!node_modules/ffprobe-static/bin/linux/ia32/**"

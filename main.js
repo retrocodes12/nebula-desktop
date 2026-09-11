@@ -3,6 +3,8 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
+const os = require('os');
+const relay = require('./relay');
 
 // ---- FFmpeg in the shell: what Chromium cannot decode (Dolby Digital / DTS / TrueHD audio,
 // HEVC without a hardware decoder) is re-encoded on the fly, the rest copied through. The
@@ -24,6 +26,21 @@ const TC_OK = (() => {
   catch (e) { return false; }
 })();
 ipcMain.on('tc-available', (event) => { event.returnValue = TC_OK; });
+
+// ---- Share with your TV (relay.js): the read-ahead cache the TV plays through. The page flips it and publishes its address (it holds the credential).
+function relayState(extra) { return Object.assign(relay.info(), { plat: process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'mac' : 'linux' }, extra || {}); }
+function relayPush(extra) { try { if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('nebula:relay', relayState(extra)); } catch (e) {} }
+function relayStart() {
+  let agent = 'NebulaPlayer'; try { agent = session.defaultSession.getUserAgent() || agent; } catch (e) {}
+  const mb = Number(process.env.NEBULA_RELAY_MB);
+  return relay.start({ dir: app.getPath('userData'), ua: agent, name: os.hostname(), cap: mb > 0 ? mb * 1048576 : 0 });
+}
+ipcMain.on('relay-info', (event) => { event.returnValue = relayState(); });
+ipcMain.handle('relay-set', async (_event, on) => {
+  try { if (on) await relayStart(); else await relay.stop(); relayPush(); }
+  catch (e) { relayPush({ error: String((e && e.message) || e) }); }
+  return relayState();
+});
 
 const httpUrl = (u) => /^https?:\/\/[^\s"'<>]{4,2000}$/i.test(u || '');
 // FFmpeg and FFprobe fetch the file as the page itself does — the same User-Agent, so a host that served the
@@ -443,6 +460,8 @@ async function createWindow() {
   win.loadURL(`http://127.0.0.1:${port}/index.html`);
   mainWin = win;
   updSchedule();
+  // sharing that was on when Nebula last closed comes back by itself — the TV keeps the address
+  if (relay.wasOn(app.getPath('userData'))) relayStart().then(() => relayPush()).catch((e) => relayPush({ error: String((e && e.message) || e) }));
   // a second launch (double-clicked the icon again) brings this window forward
   app.on('second-instance', () => {
     if (win.isDestroyed()) return;

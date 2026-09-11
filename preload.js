@@ -8,7 +8,14 @@ const { contextBridge, ipcRenderer } = require('electron');
 //                             turn files Chromium cannot decode into pieces it can
 //   update                  — the in-app updater: info (kind setup|portable|appimage|deb|dev, plat, version), check() /
 //                             download() / install() each answer with the state, on(cb) streams it
+//   relay                   — Share with your TV: info() = {on, port, token, hosts, name, plat, bytes, served, error?},
+//                             set(on) flips it (answers with the state), on(cb) streams state changes
 contextBridge.exposeInMainWorld('nebulaDesktop', {
+  relay: {
+    info: () => ipcRenderer.sendSync('relay-info'),
+    set: (on) => ipcRenderer.invoke('relay-set', !!on),
+    on: (cb) => { ipcRenderer.on('nebula:relay', (_event, state) => { try { cb(state); } catch (e) {} }); },
+  },
   setMiniMode: (on) => ipcRenderer.invoke('mini-mode', !!on),
   onFlush: (cb) => { ipcRenderer.on('nebula:flush', () => { try { cb(); } catch (e) {} }); },
   transcode: ipcRenderer.sendSync('tc-available') === true,
