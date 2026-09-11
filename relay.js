@@ -30,7 +30,7 @@ const EDGE_HOLD = 6000;                               // after a guess found not
 const MANIFEST_RE = /\.(mpd|m3u8|m3u|xml|json|vtt|srt|ttml|dfxp|ass|ssa|txt|html?|key)(\?|#|$)/i;
 const TEXT_TYPE_RE = /^text\/|xml|json|mpegurl/i;
 
-let server = null, sockets = new Set(), port = 0, token = '', ua = 'NebulaPlayer', name = os.hostname();
+let server = null, starting = null, sockets = new Set(), port = 0, token = '', ua = 'NebulaPlayer', name = os.hostname();
 let cap = 512 * CHUNK, stateFile = '', cacheBytes = 0, served = 0, sweeper = null;
 const entries = new Map();     // address → entry: what is known and held of one file or piece
 const lru = new Map();         // "address#piece" → entry, oldest first
@@ -65,7 +65,13 @@ function tokenOk(k) {
 function privateTarget(addr) {
   if (process.env.NEBULA_RELAY_ALLOW_LOOPBACK === '1') return false;     // the rigs' upstream lives on this machine
   const a = String(addr || '').replace(/^::ffff:/i, '');
-  return !a || /^127\./.test(a) || a === '0.0.0.0' || a === '::1' || a === '::' || /^169\.254\./.test(a) || /^fe[89ab][0-9a-f]:/i.test(a);
+  return !a || /^127\./.test(a) || /^0\./.test(a) || a === '::1' || a === '::' || /^169\.254\./.test(a) || /^fe[89ab][0-9a-f]:/i.test(a);
+}
+/** This server itself: an address that came back here would have us fetching our own cache, hop after hop. */
+function selfTarget(addr, prt) {
+  if (!server || prt !== port) return false;
+  const bound = (server.address() || {}).address || '';
+  return addr === bound || lanHosts().indexOf(addr) >= 0 || (bound === '0.0.0.0' && /^127\./.test(addr));
 }
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -76,12 +82,13 @@ function cors(res) {
 }
 
 // ---- upstream: one request, the address pinned to what it resolved to, redirects followed with the same check
-function fetchUpstream(url, headers, method, cb, hop) {
+function fetchUpstream(url, headers, method, cb, hop, noFollow) {
   let u; try { u = new URL(url); } catch (e) { return cb(new RelayError(400, 'bad address')); }
   if (!/^https?:$/.test(u.protocol)) return cb(new RelayError(400, 'not http'));
   dns.lookup(u.hostname, (err, address, family) => {
     if (err) return cb(new RelayError(502, 'no such host'));
     if (privateTarget(address)) return cb(new RelayError(403, 'refused address'));
+    if (selfTarget(address, Number(u.port || (u.protocol === 'https:' ? 443 : 80)))) return cb(new RelayError(403, 'refused address'));
     const mod = u.protocol === 'https:' ? https : http;
     const opts = {
       method: method || 'GET',
@@ -93,7 +100,7 @@ function fetchUpstream(url, headers, method, cb, hop) {
     let done = false;
     const req = mod.request(u, opts, (res) => {
       const st = res.statusCode, loc = res.headers.location;
-      if ((st === 301 || st === 302 || st === 303 || st === 307 || st === 308) && loc && (hop || 0) < 5) {
+      if ((st === 301 || st === 302 || st === 303 || st === 307 || st === 308) && loc && (hop || 0) < 5 && !noFollow) {
         res.resume();
         let next; try { next = new URL(loc, u).href; } catch (e) { return cb(new RelayError(502, 'bad redirect')); }
         return fetchUpstream(next, headers, method, cb, (hop || 0) + 1);
@@ -134,7 +141,8 @@ function store(e, idx, buf) {
   while (cacheBytes > cap && lru.size) {
     const [k, ent] = lru.entries().next().value;
     dropChunk(ent, Number(k.slice(k.lastIndexOf('#') + 1)));
-    if (!ent.chunks.size && !ent.reader && ent !== e) entries.delete(ent.url);
+    // never forget an address a request is still waiting on: its reader would go on filling a cache nobody sweeps
+    if (!ent.chunks.size && !ent.reader && !ent.waiters.length && ent !== e) entries.delete(ent.url);
   }
   wake(e);
 }
@@ -168,6 +176,9 @@ function startReader(e, from, pre) {
     if (err) return fail(err.status || 502, err.message);
     r.res = res;
     const st = res.statusCode, type = String(res.headers['content-type'] || '');
+    // a host that compressed anyway: the bytes are not the file's and the length is not the file's — pass it through
+    const enc = String(res.headers['content-encoding'] || '').trim();
+    if (enc && enc.toLowerCase() !== 'identity') return fail(0, 'encoded');
     if (st === 206) {
       const m = /bytes (\d+)-(\d+)\/(\d+|\*)/.exec(String(res.headers['content-range'] || ''));
       if (!m || Number(m[1]) !== from) return fail(502, 'wrong range from the host');
@@ -229,9 +240,13 @@ function familyOf(url) {
   let p = q < 0 ? url : url.slice(0, q), ext = '';
   const em = /(\.[A-Za-z][A-Za-z0-9]{0,5})$/.exec(p);              // the extension's own digit (.m4s, .mp4) is not the counter
   if (em) { ext = em[1]; p = p.slice(0, -ext.length); }
-  const m = /^(.*\D)?(\d+)(\D*)$/.exec(p);
+  // only the name at the end counts: a digit in the host (cdn2.example.com) or a directory (/v1/) is not a piece number,
+  // and stepping one would fabricate addresses on hosts and paths nobody asked for
+  const scheme = p.indexOf('://'), slash = p.lastIndexOf('/');
+  if (slash <= (scheme < 0 ? 0 : scheme + 2)) return null;
+  const dir = p.slice(0, slash + 1), m = /^(.*\D)?(\d+)(\D*)$/.exec(p.slice(slash + 1));
   if (!m) return null;
-  const head = m[1] || '', width = m[2].length, tail = m[3] + ext;
+  const head = dir + (m[1] || ''), width = m[2].length, tail = m[3] + ext;
   return { key: head + '#' + tail + rest, n: Number(m[2]), make: (k) => head + String(k).padStart(width, '0') + tail + rest };
 }
 function familyEdge(e) {
@@ -258,7 +273,11 @@ function guess(url, chained) {
   // the number in the address steps by the same amount each time
   const f = familyOf(url); if (!f) return;
   let s = families.get(f.key);
-  if (!s) { s = { delta: 0, top: f.n, guessTop: f.n, last: f.n, edge: 0, edgeAt: 0 }; families.set(f.key, s); if (!chained) return; }
+  if (!s) {
+    s = { delta: 0, top: f.n, guessTop: f.n, last: f.n, edge: 0, edgeAt: 0 }; families.set(f.key, s);
+    while (families.size > 400) { const k0 = families.keys().next().value; if (k0 === f.key) break; families.delete(k0); }
+    if (!chained) return;
+  }
   if (!chained) {
     const d = f.n - s.last;
     if (d > 0 && (!s.delta || d < s.delta)) s.delta = d;
@@ -288,10 +307,13 @@ function learnPlaylist(base, text) {
 }
 
 // ---- answering the TV
+/** One range, forwards, from a known byte. A suffix range (bytes=-500), several at once, or one that runs
+    backwards is not ours to cut: serve() hands those to the host, which is the only thing that can answer them. */
 function parseRange(h) {
-  const m = /^bytes=(\d*)-(\d*)$/.exec(String(h || '').trim()); if (!m || (!m[1] && !m[2])) return null;
-  if (!m[1]) return null;                                      // a suffix range (bytes=-500): let the host answer it
-  return { a: Number(m[1]), b: m[2] ? Number(m[2]) : null };
+  const m = /^bytes=(\d+)-(\d*)$/.exec(String(h || '').trim()); if (!m) return null;
+  const a = Number(m[1]), b = m[2] ? Number(m[2]) : null;
+  if (b != null && b < a) return null;
+  return { a, b };
 }
 function failRes(res, err) {
   if (res.headersSent) { try { res.end(); } catch (e) {} return; }
@@ -302,25 +324,37 @@ function failRes(res, err) {
 function passthrough(req, res, url) {
   const h = {}; if (req.headers.range) h.Range = req.headers.range;
   const playlist = /\.m3u8?(\?|#|$)/i.test(url);
+  // A redirect is handed BACK to the client, pointed at this relay again, instead of being followed here: the address
+  // the player ends up holding must be the FINAL one, or a manifest's relative pieces resolve against the wrong
+  // directory (and the playlist we learn names pieces that do not exist). A ranged request keeps the old path — a
+  // preflighted cross-origin request must not be asked to follow a redirect on webOS's Chromium.
+  const hand = !h.Range;
   fetchUpstream(url, h, req.method === 'HEAD' ? 'HEAD' : 'GET', (err, up) => {
     if (err) return failRes(res, err);
+    if (hand && up.statusCode >= 300 && up.statusCode < 400 && up.headers.location) {
+      let next = null; try { next = new URL(up.headers.location, url).href; } catch (e) {}
+      up.destroy();
+      if (!next || !/^https?:/i.test(next)) return failRes(res, new RelayError(502, 'bad redirect'));
+      res.writeHead(302, { Location: '/relay?u=' + encodeURIComponent(next) + '&k=' + token, 'Cache-Control': 'no-store' });
+      return res.end();
+    }
     const hd = { 'Cache-Control': 'no-store' };
-    ['content-type', 'content-length', 'content-range', 'accept-ranges', 'last-modified', 'etag'].forEach((k) => { if (up.headers[k]) hd[k] = up.headers[k]; });
-    const isList = playlist || /mpegurl/i.test(String(up.headers['content-type'] || ''));
+    ['content-type', 'content-length', 'content-range', 'content-encoding', 'accept-ranges', 'last-modified', 'etag'].forEach((k) => { if (up.headers[k]) hd[k] = up.headers[k]; });
+    const isList = (playlist || /mpegurl/i.test(String(up.headers['content-type'] || ''))) && !up.headers['content-encoding'];
     if (isList && up.statusCode === 200) delete hd['content-length'];   // read whole, then sent
     res.writeHead(up.statusCode, hd);
     if (req.method === 'HEAD') { up.destroy(); res.end(); return; }
     if (isList && up.statusCode === 200) {
       const parts = []; let len = 0;
       up.on('data', (d) => { if (len < 2 * CHUNK) { parts.push(d); len += d.length; } });
-      up.on('end', () => { const body = Buffer.concat(parts, len); try { learnPlaylist(url, body.toString('utf8')); } catch (e) {} res.end(body); });
+      up.on('end', () => { const body = Buffer.concat(parts, len); try { learnPlaylist(url, body.toString('utf8')); } catch (e) {} try { res.end(body); } catch (e) {} });
       up.on('error', () => { try { res.end(); } catch (e) {} });
     } else {
       up.pipe(res);
       up.on('error', () => { try { res.end(); } catch (e) {} });
     }
     res.on('close', () => { try { up.destroy(); } catch (e) {} });
-  });
+  }, 0, hand);
 }
 async function ready(e, a) {
   if (e.fail && (e.fail.pre || Date.now() - e.failAt > 3000)) e.fail = null;
@@ -333,6 +367,7 @@ async function serve(req, res, url) {
   const e = entryFor(url);
   e.lastClient = Date.now(); e.fam = null;
   const rg = parseRange(req.headers.range), a = rg ? rg.a : 0;
+  if (req.headers.range && !rg) return passthrough(req, res, url);   // not a range we can cut: the host's own answer
   await ready(e, a);
   try { guess(url, false); } catch (x) {}
   if (e.plain) return passthrough(req, res, url);
@@ -385,7 +420,8 @@ function sweep() {
   const now = Date.now();
   entries.forEach((e) => {
     const r = e.reader;
-    if (r && now - e.lastClient > LINGER && (!r.pre || r.paused || now - r.startedAt > LINGER)) stopReader(e);
+    // a request still waiting on this reader is a client, however long the host has been silent
+    if (r && !e.waiters.length && now - e.lastClient > LINGER && (!r.pre || r.paused || now - r.startedAt > LINGER)) stopReader(e);
     if (!e.reader && now - e.lastClient > IDLE) forget(e);
   });
 }
@@ -402,6 +438,7 @@ function start(opts) {
   } else if (opts.token && /^[0-9a-f]{32}$/.test(opts.token)) token = opts.token;
   else if (!token) token = crypto.randomBytes(16).toString('hex');
   if (server) return Promise.resolve(info());
+  if (starting) return starting;          // two set(true)s in flight bound two ports, and stop() only ever freed one
   const attempt = (i) => new Promise((resolve, reject) => {
     const p = i < PORTS.length ? PORTS[i] : 0, s = http.createServer(handle);
     s.on('connection', (sock) => { sockets.add(sock); sock.on('close', () => sockets.delete(sock)); });
@@ -409,9 +446,12 @@ function start(opts) {
     s.once('error', (err) => { s.close(); if (p !== 0 && err && (err.code === 'EADDRINUSE' || err.code === 'EACCES')) resolve(attempt(i + 1)); else reject(err); });
     s.listen(p, opts.host || '0.0.0.0', () => { server = s; port = s.address().port; resolve(info()); });
   });
-  return attempt(0).then((i) => { sweeper = setInterval(sweep, 5000); return i; });
+  starting = attempt(0).then((i) => { starting = null; clearInterval(sweeper); sweeper = setInterval(sweep, 5000); return i; },
+    (e) => { starting = null; throw e; });
+  return starting;
 }
 function stop() {
+  if (starting) return starting.then(() => stop(), () => stop());   // let the bind finish, then let go of it
   if (stateFile) writeState(stateFile, { token, on: false });
   clearInterval(sweeper); sweeper = null;
   entries.forEach((e) => forget(e));
