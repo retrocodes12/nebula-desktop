@@ -97,13 +97,15 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          A new Buffer ahead choice in Settings, under Playback.
+          Share with your TV.
 
-          Nebula normally keeps about ten seconds of video loaded ahead of you. On a connection that dips, or a source that stalls for a moment, ten seconds is not much of a cushion — playback stops and you watch a spinner. Buffer ahead lets you ask for one, two or four minutes instead, so a wobble passes without you ever seeing it, and after a stall the app gathers a few seconds before starting again rather than resuming into the next one.
+          A TV has very little memory to keep video in, which is why a stream can run dry on the TV while the same connection is perfectly fine on this computer. Turn Share with your TV on in Settings, sign this computer and the TV into the same profile, and the TV plays through here instead: this machine holds the video the TV is about to need, far more of it than the TV could ever hold itself, and reads on ahead of where the TV has got to. Nothing is written to disk and nothing leaves your network. Windows asks once whether to let Nebula accept connections on your network — it needs a yes on your private network for the TV to reach it. If this computer sleeps or leaves the network, the TV says so and carries on playing directly.
 
-          Auto stays exactly as it was, and is still the right choice on a steady connection. A longer buffer uses more memory and takes a moment longer to settle after you jump to a new position; if a device runs out of room the app quietly aims lower rather than failing. The playback info panel (the i key) now says what the buffer is aiming for, so you can see what a device actually manages.
+          When a source keeps stalling, Nebula now offers a switch. After three stalls in a minute and a half a button appears over the controls naming another source for the same thing; one press moves you to it at the same second, and the rest of the series follows the source that worked.
 
-          It applies to films and shows served in pieces, and to files this app converts for you. A live stream can only ever load as far as it has been broadcast.
+          Streams your connection cannot carry are marked. Nebula remembers how fast your connection actually is, marks the rows that ask for more than it can deliver, moves them down the list and stops choosing them for you. You can still pick one yourself, and the marking can be turned off in Settings under Streams.
+
+          Buffer ahead now loads several pieces of video at once rather than one after another, so the buffer fills faster on a slow or far-away source.
 
           Linux: the AppImage needs no install — download it, allow it to run as a program, and open it. The .deb installs it like any other app, with a menu entry, and asks for your password when it updates itself. On Windows, Setup is the installer and Portable runs without installing; neither is signed, so SmartScreen may warn the first time (More info, then Run anyway).
           EOF
