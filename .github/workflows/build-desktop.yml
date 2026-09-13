@@ -97,7 +97,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          Search has a Discover section: pick a type, one of your add-ons' catalogs and a genre, and browse the whole catalog page by page without typing. Your pick is remembered.
+          Continue watching leaves out what you were watching from an add-on you switched off; switch the add-on back on and it returns.
 
           Linux: the AppImage needs no install — download it, allow it to run as a program, and open it. The .deb installs it like any other app, with a menu entry, and asks for your password when it updates itself. On Windows, Setup is the installer and Portable runs without installing; neither is signed, so SmartScreen may warn the first time (More info, then Run anyway).
           EOF
