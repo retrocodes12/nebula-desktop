@@ -6,3 +6,6 @@ dist/
 
 # written by the update rig for a run, never shipped (the packaged app carries app-update.yml)
 dev-app-update.yml
+
+# libmpv carried by the builds, fetched by the workflow (scripts/fetch-mpv) — never committed
+build/mpv/

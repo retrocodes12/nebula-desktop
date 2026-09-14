@@ -23,6 +23,33 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
+      # libmpv for the full-format player (mpv.js): the baseline x86-64 build (the -v3 ones need AVX2), pinned by its hash
+      - name: Fetch libmpv (Windows)
+        shell: bash
+        run: |
+          curl -fsSL -o mpv-dev.7z "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20260903/mpv-dev-x86_64-20260903-git-69e63f425a.7z"
+          echo "fac135c68a35b7639e39d72c0c365104edbaebdea39a0dfdd8c36e8c8e80faef  mpv-dev.7z" | sha256sum -c -
+          mkdir -p build/mpv/win && 7z e mpv-dev.7z -obuild/mpv/win libmpv-2.dll -y > /dev/null
+          ls -la build/mpv/win
+
+      # the full-format player's helper (helper/nebula-mpv.c), MinGW-w64, linked statically: it needs nothing but libmpv-2.dll
+      # beside it. The runner's own gcc when it has one, else MSYS2's.
+      - name: Build the player helper (Windows)
+        shell: bash
+        run: |
+          G=$(command -v gcc || true)
+          if [ -z "$G" ]; then /c/msys64/usr/bin/pacman -S --noconfirm --needed mingw-w64-x86_64-gcc > /dev/null; G=/c/msys64/mingw64/bin/gcc; fi
+          "$G" --version | head -1
+          "$G" -O2 -Wall -Wextra -Werror -static -o build/mpv/win/nebula-mpv.exe helper/nebula-mpv.c -lwinmm
+          ls -la build/mpv/win
+
+      # the helper and the libmpv it ships, driven the way the app drives them (probe, frames, pause, a seek), inside Electron's runtime
+      - name: Smoke-test the full-format player
+        shell: bash
+        run: |
+          node_modules/ffmpeg-static/ffmpeg.exe -hide_banner -loglevel error -f lavfi -i testsrc2=size=640x360:rate=24 -f lavfi -i sine=frequency=440 -t 4 -c:v libx264 -c:a ac3 -y smoke.mkv
+          NEBULA_MPV_AO=null ELECTRON_RUN_AS_NODE=1 node_modules/electron/dist/electron.exe scripts/mpv-smoke.cjs smoke.mkv
+
       - name: Build Windows installer + portable
         run: npm run dist
 
@@ -56,6 +83,39 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
+      # libmpv for the full-format player: Ubuntu 22.04's build plus the two libraries a stock system may lack, carried by the
+      # AppImage and the deb (a system's own libmpv2 or libmpv1 is tried first), pinned by their hashes
+      - name: Fetch libmpv (Linux)
+        run: |
+          set -e
+          B=http://archive.ubuntu.com/ubuntu/pool/universe
+          curl -fsSL -o libmpv1.deb $B/m/mpv/libmpv1_0.34.1-1ubuntu3_amd64.deb
+          curl -fsSL -o libmujs1.deb $B/m/mujs/libmujs1_1.1.3-3_amd64.deb
+          curl -fsSL -o libsixel1.deb $B/libs/libsixel/libsixel1_1.10.3-3_amd64.deb
+          printf '%s  %s\n' 5505f4fc5a3f985d27b54f0ae6ca922a33906b3cd90cf2245205ea7739d9e407 libmpv1.deb \
+            91e7be9ccb0252d8c9f35f3ecdcbc984f3d412d174e057fda04ff608e3ff440d libmujs1.deb \
+            ef28327242ed49e1c77a070ced23fad258937b496f648211bd8a61e23ef08f5c libsixel1.deb | sha256sum -c -
+          for d in libmpv1 libmujs1 libsixel1; do dpkg-deb -x $d.deb deb-root; done
+          mkdir -p build/mpv/linux
+          L=deb-root/usr/lib/x86_64-linux-gnu
+          cp -L $L/libmpv.so.1 $L/libmujs.so.1 $L/libsixel.so.1 build/mpv/linux/
+          ls -la build/mpv/linux
+
+      # the full-format player's helper, built against Ubuntu 20.04's glibc (2.31) so it starts wherever the app does
+      - name: Build the player helper (Linux)
+        run: |
+          docker run --rm -v "$PWD":/w -w /w ubuntu:20.04 bash -c 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq gcc libc6-dev > /dev/null \
+            && gcc -O2 -Wall -Wextra -Werror -o build/mpv/linux/nebula-mpv helper/nebula-mpv.c -ldl -lpthread && chown '"$(id -u):$(id -g)"' build/mpv/linux/nebula-mpv'
+          ls -la build/mpv/linux
+          echo "newest glibc it asks for: $(objdump -T build/mpv/linux/nebula-mpv | grep -o 'GLIBC_[0-9.]*' | sort -Vu | tail -1)"
+
+      # the helper against the runner's own libmpv2 (a newer mpv than the one carried — the probe must pick it), driven as the app drives it
+      - name: Smoke-test the full-format player
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq libmpv2 > /dev/null
+          node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc2=size=640x360:rate=24 -f lavfi -i sine=frequency=440 -t 4 -c:v libx264 -c:a ac3 -y smoke.mkv
+          NEBULA_MPV_AO=null ELECTRON_RUN_AS_NODE=1 node_modules/electron/dist/electron scripts/mpv-smoke.cjs smoke.mkv
+
       - name: Build AppImage + deb
         run: npm run dist:linux
 
@@ -78,6 +138,7 @@ jobs:
 
   release:
     needs: [ windows, linux ]
+    if: github.ref == 'refs/heads/main'   # a run started on another branch (workflow_dispatch) builds and tests both, never releases
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

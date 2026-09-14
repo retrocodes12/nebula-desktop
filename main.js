@@ -397,7 +397,7 @@ async function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false,
+      nodeIntegration: false, sandbox: false,   // preload.js runs the full-format player (mpv.js: spawns its helper, maps its frames); the page still has no Node
       backgroundThrottling: false,
     },
   });

@@ -24,6 +24,8 @@
       "relay.js",
       "source.js",
       "retime.js",
+      "mpv.js",
+      "mpv-host.js",
       "renderer/**/*"
     ],
     "directories": {
@@ -45,7 +47,13 @@
           ]
         }
       ],
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "extraResources": [
+        {
+          "from": "build/mpv/win",
+          "to": "mpv"
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -88,9 +96,17 @@
         "relay.js",
         "source.js",
         "retime.js",
+        "mpv.js",
+        "mpv-host.js",
         "renderer/**/*",
         "!node_modules/ffprobe-static/bin/{darwin,win32}/**",
         "!node_modules/ffprobe-static/bin/linux/ia32/**"
+      ],
+      "extraResources": [
+        {
+          "from": "build/mpv/linux",
+          "to": "mpv"
+        }
       ]
     },
     "deb": {
@@ -106,11 +122,16 @@
         "libsecret-1-0",
         "libasound2",
         "xdg-utils"
+      ],
+      "recommends": [
+        "libmpv2 | libmpv1"
       ]
     },
     "asarUnpack": [
       "node_modules/ffmpeg-static/**",
-      "node_modules/ffprobe-static/**"
+      "node_modules/ffprobe-static/**",
+      "node_modules/koffi/**",
+      "node_modules/@koromix/**"
     ],
     "publish": {
       "provider": "github",
@@ -121,6 +142,7 @@
   "dependencies": {
     "electron-updater": "^6.8.9",
     "ffmpeg-static": "^5.3.0",
-    "ffprobe-static": "^3.1.0"
+    "ffprobe-static": "^3.1.0",
+    "koffi": "^3.3.0"
   }
 }
