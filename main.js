@@ -4,13 +4,12 @@ const fs = require('fs');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 const os = require('os');
-const relay = require('./relay');
+const relay = require('./relay'), source = require('./source'), { retime } = require('./retime');
 
-// ---- FFmpeg in the shell: what Chromium cannot decode (Dolby Digital / DTS / TrueHD audio,
-// HEVC without a hardware decoder) is re-encoded on the fly, the rest copied through. The
-// player asks /probe what a file holds, then pulls /seg pieces and appends them itself.
-// Bundled through ffmpeg-static + ffprobe-static (unpacked from the asar); a dev checkout
-// without them falls back to whatever is on PATH.
+// ---- FFmpeg in the shell: what Chromium cannot decode (Dolby Digital / DTS / TrueHD audio, HEVC without a
+// hardware decoder) is re-encoded on the fly, the rest copied through. The player asks /probe what a file holds,
+// then pulls /seg pieces and appends them itself. Bundled through ffmpeg-static + ffprobe-static (unpacked from
+// the asar); a dev checkout without them falls back to whatever is on PATH.
 function tool(name) {
   try {
     const mod = require(name === 'ffmpeg' ? 'ffmpeg-static' : 'ffprobe-static');
@@ -43,19 +42,17 @@ ipcMain.handle('relay-set', async (_event, on) => {
 });
 
 const httpUrl = (u) => /^https?:\/\/[^\s"'<>]{4,2000}$/i.test(u || '');
-// FFmpeg and FFprobe fetch the file as the page itself does — the same User-Agent, so a host that served the
-// player serves them too (ffmpeg's own "Lavf" name is what hosts block) — and ride out a dropped connection.
-function netArgs() {
-  let ua = 'NebulaPlayer';
-  try { ua = session.defaultSession.getUserAgent() || ua; } catch (e) {}
-  return ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '4', '-user_agent', ua];
-}
+// FFmpeg reads every file through source.js on loopback — its Linux build crashes on a host-name lookup — and the host
+// sees the page's own User-Agent (ffmpeg's "Lavf" is what hosts block); -reconnect rides out a dropped connection.
+const NET = ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '4'];
+const agent = () => { try { return session.defaultSession.getUserAgent(); } catch (e) { return ''; } };
 
 // What the file holds: duration, the video codec, every audio and subtitle track. When FFprobe cannot read it,
 // what the host did instead (a 403, a page) — the player turns that into a sentence.
-function probe(src, res) {
+async function probe(src, hd, res) {
+  const input = await source.urlFor(src, hd, agent());
   // the track list sits in the header: a second of packets is plenty, and keeps a 25 Mbps remux from costing 16 MB per play
-  const ff = spawn(FFPROBE, ['-v', 'error', ...netArgs(), '-print_format', 'json', '-show_streams', '-show_format', '-analyzeduration', '1M', '-probesize', '5M', src], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const ff = spawn(FFPROBE, ['-v', 'error', ...NET, '-print_format', 'json', '-show_streams', '-show_format', '-analyzeduration', '1M', '-probesize', '5M', input], { stdio: ['ignore', 'pipe', 'pipe'] });
   let out = '', err = '';
   const timer = setTimeout(() => { try { ff.kill('SIGKILL'); } catch (e) {} }, 25000);
   ff.stdout.on('data', (d) => { out += d; });
@@ -74,7 +71,7 @@ function probe(src, res) {
     let j = null; try { j = JSON.parse(out); } catch (e) {}
     if (!j || !Array.isArray(j.streams) || !j.streams.length) {
       const http = /(?:HTTP error|Server returned) (\d{3})/.exec(err);
-      const body = { error: 'probe failed', http: http ? Number(http[1]) : 0, notmedia: /Invalid data found|does not contain any stream/i.test(err), detail: err.trim().slice(-200) };
+      const body = { error: 'probe failed', http: http ? Number(http[1]) : 0, notmedia: /Invalid data found|does not contain any stream/i.test(err), detail: err.split(input).join('<file>').trim().slice(-200) };
       res.statusCode = 502; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(body)); return;
     }
     const v = j.streams.find((s) => s.codec_type === 'video' && !(s.disposition && s.disposition.attached_pic)) || null;
@@ -84,7 +81,7 @@ function probe(src, res) {
     }));
     const subs = j.streams.filter((s) => s.codec_type === 'subtitle').map((s, i) => ({ i, codec: s.codec_name || '', lang: (s.tags && s.tags.language) || '', title: (s.tags && s.tags.title) || '' }));
     const body = {
-      duration: Number((j.format && j.format.duration) || (v && v.duration) || 0) || 0,
+      duration: Number((j.format && j.format.duration) || (v && v.duration) || 0) || 0, start: Number((j.format && j.format.start_time) || 0) || 0,
       video: v ? { codec: v.codec_name || '', width: v.width || 0, height: v.height || 0, profile: v.profile || '', pix_fmt: v.pix_fmt || '', transfer: v.color_transfer || '' } : null,
       audio, subs,
     };
@@ -92,29 +89,31 @@ function probe(src, res) {
   });
 }
 
-// One piece of the file from second `t`, `len` seconds long, as fragmented MP4 with the ORIGINAL
-// timestamps kept (-copyts), so the player can drop it straight onto its timeline. Video is
-// copied unless `v=h264` asks for a re-encode; audio track `a` becomes stereo AAC.
-function segment(q, req, res) {
+// One piece of the file from second `t`, `len` seconds long, as fragmented MP4. FFmpeg counts each track's fragments
+// from 0 whatever -copyts says; retime.js moves them to where the file has them (delay_moov writes that down), so the
+// player drops the piece straight onto its timeline. Video is copied unless `v=h264` asks; audio track `a` → stereo AAC.
+async function segment(q, hd, req, res) {
   const src = q.get('src') || '';
   const t = Math.max(0, Number(q.get('t')) || 0), len = Math.min(30, Math.max(2, Number(q.get('len')) || 10));
-  const a = Math.max(0, Number(q.get('a')) || 0), vmode = q.get('v') === 'h264' ? 'h264' : 'copy', vcodec = q.get('vc') || '';
+  const a = Math.max(0, Number(q.get('a')) || 0), vmode = q.get('v') === 'h264' ? 'h264' : 'copy', vcodec = q.get('vc') || '', st = Math.max(0, Number(q.get('st')) || 0);
   // -ss before -i lands on the keyframe at or before t (fast, needed for a video copy); -to with -copyts then runs the
   // piece up to the absolute time t+len, so a long keyframe gap never leaves the requested second uncovered
-  const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', ...netArgs(), '-ss', String(t), '-i', src, '-to', String(t + len),
+  const input = await source.urlFor(src, hd, agent()); if (req.destroyed) return;   // the player moved on while the loopback server started
+  const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', ...NET, '-ss', String(t), '-i', input, '-to', String(t + len),
     '-map', '0:v:0', '-map', '0:a:' + a, '-sn', '-dn'];
-  if (vmode === 'h264') args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22', '-pix_fmt', 'yuv420p', '-g', '48', '-force_key_frames', 'expr:gte(t,n_forced*2)');
+  // ultrafast, never above 1080 lines (the pieces only cross loopback): an i3-3217U re-encodes 1080p HEVC at 0.94× real time so, 0.52× on veryfast
+  if (vmode === 'h264') args.push(...(Number(q.get('vh')) > 1080 ? ['-vf', 'scale=-2:1080'] : []), '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '22', '-pix_fmt', 'yuv420p', '-g', '48', '-force_key_frames', 'expr:gte(t,n_forced*2)');
   else { args.push('-c:v', 'copy'); if (/hevc|h265/i.test(vcodec)) args.push('-tag:v', 'hvc1'); }
-  args.push('-c:a', 'aac', '-ac', '2', '-b:a', '192k', '-copyts', '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+default_base_moof', '-frag_duration', '1000000', 'pipe:1');
+  args.push('-c:a', 'aac', '-ac', '2', '-b:a', '192k', '-copyts', '-f', 'mp4', '-movflags', 'frag_keyframe+delay_moov+default_base_moof', '-frag_duration', '1000000', 'pipe:1');
   const ff = spawn(FFMPEG, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-  let err = '';
+  let err = '', killed = false;
   ff.stderr.on('data', (d) => { err += d; if (err.length > 4000) err = err.slice(-4000); });
   res.writeHead(200, { 'Content-Type': 'video/mp4', 'Cache-Control': 'no-store' });
-  ff.stdout.pipe(res);
-  const kill = () => { try { ff.kill('SIGKILL'); } catch (e) {} };
+  ff.stdout.pipe(retime(st)).pipe(res);   // st: where the file's own clock starts (an MPEG-TS at 1.4 s) — the player's starts at 0
+  const kill = () => { killed = true; try { ff.kill('SIGKILL'); } catch (e) {} };   // the player left the piece (a seek, Back): not a failure
   req.on('close', kill);
   ff.on('error', (e) => { console.error('ffmpeg seg spawn', e && e.message || e); try { res.destroy(); } catch (e2) {} });   // never an uncaught exception
-  ff.on('close', (code) => { if (code && !res.writableEnded) { try { res.destroy(); } catch (e) {} } if (code) console.error('ffmpeg seg exit', code, err.trim().slice(-300)); });
+  ff.on('close', (code, sig) => { if ((code || sig) && !res.writableEnded) { try { res.destroy(); } catch (e) {} } if ((code || sig) && !killed) console.error('ffmpeg seg exit', code || sig, err.trim().slice(-300)); });   // a crash is a failed piece, never an empty one
 }
 
 // ---- In-app update. The installer build asks GitHub for the newest release through electron-updater:
@@ -348,7 +347,8 @@ function startServer() {
         const src = u.searchParams.get('src') || '';
         if (!TC_OK) { res.statusCode = 501; res.end('no ffmpeg'); return; }
         if (!httpUrl(src)) { res.statusCode = 400; res.end('bad src'); return; }
-        if (u.pathname === '/probe') probe(src, res); else segment(u.searchParams, req, res);
+        const hd = source.parseHeaders(u.searchParams.get('h'));   // the add-on's request headers for the file (proxyHeaders)
+        (u.pathname === '/probe' ? probe(src, hd, res) : segment(u.searchParams, hd, req, res)).catch((e) => { if (!res.headersSent) { res.statusCode = 502; res.end(String((e && e.message) || e)); } });
         return;
       }
       let p = decodeURIComponent((req.url || '/').split('?')[0]);
