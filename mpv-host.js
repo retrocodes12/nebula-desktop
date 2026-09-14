@@ -1,25 +1,38 @@
 'use strict';
-// The full-format player's helper process, seen from the page's side (Node only, no DOM). helper/nebula-mpv.c runs libmpv in
-// a plain process of its own — on Linux the page's process cannot host it: Electron's FFmpeg and libvulkan sit first in its
-// symbol scope and libmpv's calls land in them, an ABI mismatch that aborts (measured 09-15) — draws each frame into shared
-// memory this file maps, and serves mpv's JSON IPC. This file finds the libmpv that works here (probe), starts the helper,
-// maps the frames, speaks the IPC and keeps a picture of mpv's state from its property changes. Each helper run is a
-// session of its own: a crash takes that helper, never the window, and what it held goes with it; the next play starts
-// another. mpv.js draws what is here; scripts/mpv-smoke.cjs drives this file on its own in the workflow.
+// The full-format player's helper, driven from the main process. helper/nebula-mpv.c runs libmpv in a plain process of its
+// own (in-process libmpv aborts on Linux: Electron's own FFmpeg interposes libmpv's, 09-15), draws each frame and serves it
+// to the page over loopback HTTP (helper/frames.c: one fetch a frame, a fresh token for every helper — the page stays
+// sandboxed), and runs mpv's JSON IPC, which this file speaks. Nothing the page sends reaches mpv unchecked: a load is an
+// http(s) address or a file the user picked (granted here first), commands and properties come from short lists — mpv's
+// own `run`, `subprocess`, `load-script` and every property that writes a file are out of reach. mpv-ipc.js wires this to
+// the window; scripts/mpv-smoke.cjs drives it alone in CI. Each helper run is a session of its own: a crash takes that
+// helper, never the window, and what it held goes with it; the next play starts another.
 const path = require('path'), fs = require('fs'), os = require('os'), net = require('net'), crypto = require('crypto'), cp = require('child_process');
 
-const MAX_W = 1920, MAX_H = 1080, HDR = 64, WIN = process.platform === 'win32', FRAME = MAX_W * MAX_H * 4;
+const MAX_W = 1920, MAX_H = 1080, WIN = process.platform === 'win32';
 const OBSERVE = ['time-pos', 'duration', 'pause', 'paused-for-cache', 'seeking', 'eof-reached', 'idle-active', 'volume', 'mute', 'speed',
   'demuxer-cache-duration', 'dwidth', 'dheight', 'frame-drop-count', 'estimated-vf-fps', 'container-fps', 'video-bitrate', 'audio-bitrate',
-  'aid', 'sid', 'audio-codec-name', 'video-codec', 'audio-params/channel-count', 'demuxer-via-network', 'track-list', 'sub-text', 'mpv-version'];
+  'aid', 'sid', 'audio-codec-name', 'video-codec', 'audio-params/channel-count', 'demuxer-via-network', 'track-list', 'sub-text', 'mpv-version',
+  'hwdec-current', 'video-params/gamma', 'video-params/primaries'];
+const GETTABLE = ['aid', 'sid', 'speed', 'volume', 'mute', 'pause', 'sub-text', 'idle-active', 'frame-drop-count', 'container-fps', 'estimated-vf-fps',
+  'audio-codec-name', 'video-codec', 'hwdec-current', 'mpv-version', 'demuxer-cache-duration', 'video-params/gamma'];
 const LIB_DIRS = ['/lib/x86_64-linux-gnu', '/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/usr/lib', '/lib64', '/usr/local/lib', '/usr/lib/aarch64-linux-gnu'];
 // the helper's exits that say this computer cannot run it at all (helper/nebula-mpv.c): no libmpv loads (4), mpv will not be
 // made (6) or start (7), or it is too old to draw in software (8). Anything else — a slow start, a crash — was one play's.
 const FATAL = { 4: true, 6: true, 7: true, 8: true };
+// what the page may set, and the shape each value must have
+const YESNO = /^(yes|no)$/, NUM = /^-?\d{1,7}(\.\d{1,6})?$/, TRACK = /^(\d{1,3}|no|auto)$/, COLOR = /^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/;
+const SETTABLE = { pause: YESNO, mute: YESNO, 'sub-bold': YESNO, volume: NUM, speed: NUM, 'sub-delay': NUM, 'sub-scale': NUM, 'sub-pos': NUM,
+  'sub-border-size': NUM, 'sub-shadow-offset': NUM, aid: TRACK, sid: TRACK, 'sub-color': COLOR, 'sub-back-color': COLOR, 'sub-border-color': COLOR,
+  'sub-shadow-color': COLOR, 'sub-font': /^(sans-serif|serif|monospace)$/, 'sub-border-style': /^(outline-and-shadow|opaque-box|background-box)$/,
+  'cache-secs': NUM, 'demuxer-max-bytes': /^\d{1,4}MiB$/ };
+const SEEK_MODE = /^(absolute|relative)(\+exact|\+keyframes)?$/;
+const MEDIA_FILE = /\.(mkv|mk3d|mp4|m4v|mov|avi|webm|ts|m2ts|mts|mpg|mpeg|vob|wmv|flv|ogv|3gp|mka|mp3|m4a|aac|flac|wav|ogg|opus|ac3|eac3|dts)$/i;
 
-let koffi = null, mm = null;                            // the mapping calls: libc mmap, or kernel32 MapViewOfFile
 let s = null;                                           // the helper session now running (see start)
-let starting = null, probing = null, failed = '', good = '', ver = '', rid = 0, loadSeq = 0, onEvent = null;
+let starting = null, probing = null, failed = '', good = '', ver = '', rid = 0, loadSeq = 0, onEvent = null, origin = '';
+const grants = new Map();                               // id → a local file the user picked (load('local:<id>'))
+let grantSeq = 0;
 
 function exe() { return WIN ? 'nebula-mpv.exe' : 'nebula-mpv'; }
 function helperFile() {
@@ -46,8 +59,16 @@ function whyNot() {
   return 'no player library on this computer';
 }
 function version() { return ver; }
-function emit(e) { if (onEvent) { try { onEvent(e); } catch (x) {} } }
+function frameBase() { return (s && s.port && s.sock) ? 'http://127.0.0.1:' + s.port + '/' + s.token + '/f' : ''; }
+function info() { const ok = available(); return { available: ok, error: ok ? '' : whyNot(), lib: good || libs().join(' | '), version: ver, base: frameBase() }; }
+const DEBUG = !!process.env.NEBULA_MPV_DEBUG;          // the rigs' trace: what mpv said and what went to the page
+function emit(e) {
+  if (DEBUG && e.type !== 'state') console.log('[mpv-host] emit ' + e.type + (e.reason ? ' ' + e.reason : '') + (e.error ? ' ' + e.error : ''));
+  if (onEvent) { try { onEvent(e); } catch (x) {} }
+}
 function on(cb) { onEvent = typeof cb === 'function' ? cb : null; }
+/** The page's origin: the frame server answers it (and only its fetches can read the frames). */
+function setOrigin(o) { if (/^http:\/\/127\.0\.0\.1:\d{2,5}$/.test(String(o))) origin = o; }
 function spawnHelper(args, stdin) {
   const env = Object.assign({}, process.env);
   delete env.LD_PRELOAD; delete env.LD_LIBRARY_PATH;                    // a plain process: the system's own libraries
@@ -99,35 +120,34 @@ function start() {
       if (done) return;
       done = true; clearTimeout(timer);
       if (starting === mine) starting = null;
-      if (!e) return ok();
+      if (!e) { emit({ type: 'up', base: frameBase() }); return ok(); }
       if (ss) { if (s === ss) s = null; drop(ss, true); }
       no(e);
     };
     const give = (m, fatal) => { const e = new Error(m); e.fatal = !!fatal; fin(e); };
     if (!helperFile() || !list.length) return give(whyNot(), true);
     sweep();
-    ss = { p: null, dir: '', ipc: '', shmName: '', shm: null, sock: null, rbuf: '', pending: new Map(), props: {}, recent: [], subFiles: [],
-      loaded: false, busy: false, ready: false, gone: false, dropped: false, quitting: false };
-    const tag = process.pid + '-' + crypto.randomBytes(4).toString('hex');
+    ss = { p: null, dir: '', ipc: '', port: 0, token: crypto.randomBytes(16).toString('hex'), sock: null, rbuf: '', pending: new Map(), props: {},
+      recent: [], subFiles: [], loaded: false, busy: false, ready: false, gone: false, dropped: false, quitting: false, expect: null, cur: null,
+      waiting: false, queue: [] };
     try {
       ss.dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nebula-mpv-' + process.pid + '-'));   // 0700: the socket and subtitle files are this user's
-      if (WIN) { ss.ipc = '\\\\.\\pipe\\nebula-mpv-' + tag; ss.shmName = 'Local\\nebula-mpv-' + tag; }
-      else { ss.ipc = path.join(ss.dir, 'ipc'); ss.shmName = fs.existsSync('/dev/shm') ? '/dev/shm/nebula-mpv-' + tag : path.join(ss.dir, 'frames'); }
+      ss.ipc = WIN ? '\\\\.\\pipe\\nebula-mpv-' + process.pid + '-' + crypto.randomBytes(8).toString('hex') : path.join(ss.dir, 'ipc');
     } catch (e) { return give('no temporary folder: ' + (e && e.message || e)); }
     let p;
-    // stdin stays a pipe: the helper leaves when it closes — this page gone, even if its process is not (a reload)
-    try { p = spawnHelper([ss.shmName, ss.ipc, String(MAX_W), String(MAX_H), String(process.pid), list.join('|')].concat(options()), 'pipe'); }
-    catch (e) { if (ss.dir) { try { fs.rmSync(ss.dir, { recursive: true, force: true }); } catch (x) {} } return give(String(e && e.message || e)); }
+    // stdin stays a pipe: the helper leaves as it closes
+    try { p = spawnHelper([ss.ipc, String(MAX_W), String(MAX_H), String(process.pid), ss.token, origin || 'null', list.join('|')].concat(options()), 'pipe'); }
+    catch (e) { try { fs.rmSync(ss.dir, { recursive: true, force: true }); } catch (x) {} return give(String(e && e.message || e)); }
     ss.p = p; s = ss;
     p.stdin.on('error', () => {});
     p.stderr.on('data', (d) => { err = (err + d).slice(-2000); });
     p.stdout.on('data', (d) => {
       if (done || ss.ready) return;
       out += d;
-      if (!/^READY /m.test(out)) return;                 // an ERROR line is followed by the exit, whose code says how final it is
-      ss.ready = true;
+      const m = /^READY (\d+)/m.exec(out);
+      if (!m) return;                                    // an ERROR line is followed by the exit, whose code says how final it is
+      ss.ready = true; ss.port = Number(m[1]);
       if (ss.dropped) return give('stopped');
-      try { mapShm(ss); } catch (e) { return give('frames: ' + (e && e.message || e)); }
       connect(ss).then(() => { if (ss.dropped) give('stopped'); else fin(null); }, (e) => give('control: ' + (e && e.message || e)));
     });
     p.on('error', (e) => give(String(e && e.message || e)));
@@ -148,88 +168,55 @@ function start() {
   if (!done) starting = mine;
   return mine;
 }
-/** Everything one helper run holds, let go: its frames, its control line, its files — and the process, when asked. */
+/** Everything one helper run holds, let go: its control line and its files — and the process, when asked. */
 function drop(ss, kill) {
   if (ss.dropped) return;
   ss.dropped = true;
   if (kill && ss.p && !ss.gone) { try { ss.p.kill(); } catch (e) {} }
-  if (ss.shm && mm) unmap(ss.shm);
-  ss.shm = null;
   if (ss.sock) { try { ss.sock.destroy(); } catch (e) {} ss.sock = null; }
   ss.pending.forEach((q) => q.no(new Error('closed'))); ss.pending.clear();
-  if (!WIN && /^\/dev\/shm\/nebula-mpv-/.test(ss.shmName)) { try { fs.unlinkSync(ss.shmName); } catch (e) {} }
   ss.subFiles = [];
   if (ss.dir) { try { fs.rmSync(ss.dir, { recursive: true, force: true }); } catch (e) {} }
 }
-/** What a Nebula that ended without cleaning up left behind (frame memory, a socket folder): removed when its process is gone. */
+/** What a Nebula that ended without cleaning up left behind (a socket folder, subtitle files): removed when its process is gone. */
 function sweep() {
   const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
-  const clear = (d, rm) => {
-    try { fs.readdirSync(d).forEach((f) => { const m = /^nebula-mpv-(\d+)-/.exec(f); if (m && Number(m[1]) !== process.pid && !alive(Number(m[1]))) rm(path.join(d, f)); }); } catch (e) {}
-  };
-  if (!WIN) clear('/dev/shm', (f) => { try { fs.unlinkSync(f); } catch (e) {} });
-  clear(os.tmpdir(), (f) => { try { fs.rmSync(f, { recursive: true, force: true }); } catch (e) {} });
+  try {
+    fs.readdirSync(os.tmpdir()).forEach((f) => {
+      const m = /^nebula-mpv-(\d+)-/.exec(f);
+      if (m && Number(m[1]) !== process.pid && !alive(Number(m[1]))) { try { fs.rmSync(path.join(os.tmpdir(), f), { recursive: true, force: true }); } catch (e) {} }
+    });
+  } catch (e) {}
 }
 function options() {
   const o = { hwdec: 'auto-copy-safe', 'keep-open': 'yes', 'msg-level': 'all=warn', 'input-default-bindings': 'no', 'input-vo-keyboard': 'no', 'osd-level': '0',
-    ytdl: 'no', 'sub-auto': 'no', 'audio-file-auto': 'no', cache: 'yes', 'network-timeout': '20', 'audio-client-name': 'Nebula', sid: 'no', 'hr-seek': 'yes',
-    'stream-lavf-o': 'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5',
+    config: 'no', 'load-scripts': 'no', osc: 'no', ytdl: 'no', 'sub-auto': 'no', 'audio-file-auto': 'no', cache: 'auto', 'network-timeout': '20',
+    'audio-client-name': 'Nebula', sid: 'no', 'hr-seek': 'yes', 'stream-lavf-o': 'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5',
     // the software renderer's scaling is most of a frame's cost: bicubic + ordered dither draws 4K HEVC at 1080p in 42 ms on
-    // an i3-3217U where the default lanczos + random dither took 53 (09-15); mpv.js draws smaller when even that is too slow
-    'zimg-scaler': 'bicubic', 'zimg-dither': 'ordered' };
+    // an i3-3217U where mpv's default lanczos + random dither took 53 (09-15); the page draws smaller when even that is too slow
+    'zimg-scaler': 'bicubic', 'zimg-dither': 'ordered',
+    // every frame is labelled SDR BT.709 on its way to the renderer, so no libmpv version converts HDR or wide colour on the
+    // CPU (mpv 0.34 would not at all: PQ came out flat, 09-15); the page's shader tone-maps from the file's own values
+    vf: 'format=gamma=bt.1886:primaries=bt.709' };
   if (process.env.NEBULA_MPV_AO) o.ao = process.env.NEBULA_MPV_AO;     // the rigs play in silence
   return Object.keys(o).map((k) => k + '=' + o[k]);
 }
-// The shared memory is copied, never wrapped: Electron's V8 sandbox aborts on an ArrayBuffer over memory it did not allocate
-// (koffi.view — fine in plain Node, fatal here, 09-15). A new frame is one memcpy into a buffer V8 owns (~1 ms for 1366x768).
-function mapShm(ss) {
-  if (!koffi) koffi = require('koffi');
-  const size = HDR + 2 * FRAME;
-  let ptr = null;
-  if (WIN) {
-    if (!mm) {
-      const k = koffi.load('kernel32.dll');
-      mm = { open: k.func('void *OpenFileMappingW(uint32_t, int, const char16_t *)'), map: k.func('void *MapViewOfFile(void *, uint32_t, uint32_t, uint32_t, size_t)'),
-        unmap: k.func('int UnmapViewOfFile(void *)'), close: k.func('int CloseHandle(void *)'),
-        cin: k.func('void RtlMoveMemory(void *, uintptr_t, size_t)'), cout: k.func('void RtlMoveMemory(uintptr_t, void *, size_t)') };
-    }
-    const h = mm.open(0xF001F, 0, ss.shmName); if (!h) throw new Error('OpenFileMapping');
-    ptr = mm.map(h, 0xF001F, 0, 0, size); mm.close(h);
-    if (!ptr) throw new Error('MapViewOfFile');
-  } else {
-    if (!mm) {
-      const c = koffi.load('libc.so.6');
-      mm = { mmap: c.func('void *mmap(void *, size_t, int, int, int, long)'), munmap: c.func('int munmap(void *, size_t)'),
-        cin: c.func('void *memcpy(void *, uintptr_t, size_t)'), cout: c.func('void *memcpy(uintptr_t, void *, size_t)') };
-    }
-    const fd = fs.openSync(ss.shmName, 'r+');
-    try { ptr = mm.mmap(null, size, 3, 1, fd, 0); } finally { fs.closeSync(fd); }         // PROT_READ|PROT_WRITE, MAP_SHARED
-    if (!ptr || koffi.address(ptr) === 0xFFFFFFFFFFFFFFFFn) throw new Error('mmap');
-  }
-  const head = new Uint8Array(HDR);
-  const shm = { ptr, base: koffi.address(ptr), size, head, dv: new DataView(head.buffer), px: new Uint8Array(0), tmp: new Uint8Array(8) };
-  mm.cin(shm.head, shm.base, HDR);
-  if (shm.dv.getUint32(0, true) !== 0x564d504e) { unmap(shm); throw new Error('these are not the helper\'s frames'); }
-  ss.shm = shm;
-}
-function unmap(m) { try { if (WIN) mm.unmap(m.ptr); else mm.munmap(m.ptr, m.size); } catch (e) {} }
-function head() { mm.cin(s.shm.head, s.shm.base, HDR); return s.shm.dv; }
-/** Frames drawn so far (the helper's counter). */
-function count() { return (s && s.shm) ? Number(head().getBigUint64(48, true)) : -1; }
 function connect(ss) {
   return new Promise((ok, no) => {
     let tries = 0;
     const go = () => {
       if (ss.dropped) return no(new Error('stopped'));
       const k = net.createConnection(ss.ipc);
+      const retry = (e) => { k.destroy(); if (++tries > 60) no(e); else setTimeout(go, 50); };
+      k.once('error', retry);
       k.once('connect', () => {
+        k.removeListener('error', retry);
         ss.sock = k; ss.rbuf = ''; k.setEncoding('utf8');
         k.on('data', (c) => onData(ss, c)); k.on('error', () => {}); k.on('close', () => { if (ss.sock === k) ss.sock = null; });
         OBSERVE.forEach((n, i) => send(ss, ['observe_property', i + 1, n]).catch(() => {}));
         send(ss, ['request_log_messages', 'warn']).catch(() => {});   // a host's "HTTP error 403" arrives as a warning
         ok();
       });
-      k.once('error', (e) => { k.destroy(); if (++tries > 60) no(e); else setTimeout(go, 50); });
     };
     go();
   });
@@ -255,6 +242,8 @@ function onData(ss, chunk) {
     if (m.event) event(ss, m);
   }
 }
+/** This load's file is the one mpv is on: its entry id answered loadfile ('any' for an mpv that does not number them). */
+function ours(ss) { return ss.expect != null && ss.expect !== 'next' && (ss.cur === ss.expect || ss.cur === 'any'); }
 function event(ss, m) {
   if (m.event === 'property-change') {
     ss.props[m.name] = m.data;
@@ -263,75 +252,118 @@ function event(ss, m) {
     return;
   }
   if (m.event === 'log-message') { const t = String(m.text || '').trim(); if (t) { ss.recent.push(t); if (ss.recent.length > 6) ss.recent.shift(); } return; }
+  if (DEBUG) console.log('[mpv-host] mpv ' + m.event + ' entry ' + m.playlist_entry_id + ' expect ' + ss.expect + ' cur ' + ss.cur + (ss === s ? '' : ' (an old helper)'));
   if (ss !== s) return;                                 // a helper on its way out says nothing more to the page
-  if (m.event === 'start-file') { ss.recent = []; ss.busy = true; emit({ type: 'start' }); }
-  else if (m.event === 'file-loaded') { ss.loaded = true; emit({ type: 'loaded', tracks: ss.props['track-list'] || [] }); }
-  else if (m.event === 'end-file') {
+  // loadfile's answer names the new file's entry, and a fresh mpv can send the file's first events before it (seen 09-15):
+  // those wait for the answer — a file that fails at once would otherwise end unheard and the page wait out its 45 s
+  if (ss.waiting && /^(start-file|file-loaded|end-file|seek|playback-restart|video-reconfig)$/.test(m.event)) { ss.queue.push(m); return; }
+  if (m.event === 'start-file') {
+    ss.cur = m.playlist_entry_id != null ? m.playlist_entry_id : 'any';
+    if (ss.expect === 'next') ss.expect = ss.cur;
+    if (!ours(ss)) return;                              // a file an earlier load asked for, already replaced
+    ss.recent = []; ss.busy = true; emit({ type: 'start' });
+  } else if (m.event === 'file-loaded') {
+    if (!ours(ss)) return;
+    ss.loaded = true; emit({ type: 'loaded', tracks: ss.props['track-list'] || [] });
+  } else if (m.event === 'end-file') {
+    if (ss.expect == null || ss.expect === 'next' || (m.playlist_entry_id != null && m.playlist_entry_id !== ss.expect)) return;   // replaced or stopped: not news
     const was = ss.loaded; ss.loaded = false; ss.busy = false;
     // what the host said, when it said anything (an HTTP status first), else mpv's last word
     const detail = ss.recent.filter((t) => /HTTP error \d{3}|\b[45]\d\d\b/.test(t)).pop() || ss.recent[ss.recent.length - 1] || '';
     emit({ type: 'end', reason: m.reason || 'stop', error: m.file_error || '', detail, loaded: was });
-  }
+  } else if (!ours(ss)) return;
   else if (m.event === 'seek') emit({ type: 'seek' });
   else if (m.event === 'playback-restart') emit({ type: 'restart' });
   else if (m.event === 'video-reconfig') emit({ type: 'video', w: ss.props.dwidth || 0, h: ss.props.dheight || 0 });
 }
 
-// ---- what mpv.js asks
+// ---- what the window asks (mpv-ipc.js) — every value checked here
 /** A property as mpv's own string form would give it (yes/no, numbers, JSON for lists); only observed ones are known. */
 function get(k) {
   const v = s ? s.props[k] : undefined;
   if (v === undefined || v === null) return null;
-  if (v === true) return 'yes'; if (v === false) return 'no';
+  if (v === true) return 'yes';
+  if (v === false) return 'no';
   return typeof v === 'object' ? JSON.stringify(v) : String(v);
 }
 function snapshot() {
   const P = s ? s.props : {}, num = (k) => (typeof P[k] === 'number' ? P[k] : null), flag = (k) => (typeof P[k] === 'boolean' ? P[k] : null);
-  const dur = num('duration');
+  const dur = num('duration'), p = {};
+  GETTABLE.forEach((k) => { p[k] = get(k); });
   return { t: num('time-pos'), dur, pause: flag('pause'), cache: flag('paused-for-cache'), seeking: flag('seeking'), eof: flag('eof-reached'), idle: flag('idle-active'),
     vol: num('volume'), mute: flag('mute'), speed: num('speed'), ahead: num('demuxer-cache-duration'), w: num('dwidth'), h: num('dheight'), drop: num('frame-drop-count'),
     vfps: num('estimated-vf-fps'), fps: num('container-fps'), vbr: num('video-bitrate'), abr: num('audio-bitrate'), aid: get('aid'), sid: get('sid'),
-    acodec: P['audio-codec-name'] || null, vcodec: P['video-codec'] || null, ach: num('audio-params/channel-count'),
-    live: !(dur > 0) && P['demuxer-via-network'] === true, drawMs: (s && s.shm) ? Math.round(head().getUint32(56, true) / 100) / 10 : 0 };
+    acodec: P['audio-codec-name'] || null, vcodec: P['video-codec'] || null, ach: num('audio-params/channel-count'), gamma: P['video-params/gamma'] || null,
+    prim: P['video-params/primaries'] || null,
+    hw: P['hwdec-current'] || null, live: !(dur > 0) && P['demuxer-via-network'] === true, p };
 }
-/** The newest finished frame when it is newer than `since`: copied out of the shared memory into a buffer reused from call to
-    call (the bytes are only good until the next call), else null. */
-function frame(since) {
-  if (!s || !s.shm) return null;
-  const shm = s.shm, dv = head(), n = Number(dv.getBigUint64(48, true));
-  if (n === since) return null;
-  const cur = dv.getUint32(24, true) & 1, w = dv.getUint32(32 + 4 * cur, true), h = dv.getUint32(40 + 4 * cur, true), len = w * h * 4;
-  if (w < 2 || h < 2 || len > FRAME) return null;
-  if (shm.px.length < len) shm.px = new Uint8Array(len);
-  mm.cin(shm.px, shm.base + BigInt(HDR + cur * FRAME), len);
-  return { count: n, view: shm.px.subarray(0, len), w, h, drawMs: dv.getUint32(56, true) / 1000 };
+/** A film is on and moving (the display is kept awake for it). */
+function playing() { return !!(s && s.loaded && s.props.pause === false && s.props['idle-active'] !== true); }
+/** A local file the user picked, remembered so that load() can name it without the page ever sending a path: media only. */
+function grant(p) {
+  try {
+    if (typeof p !== 'string' || !path.isAbsolute(p) || !MEDIA_FILE.test(p) || !fs.statSync(p).isFile()) return '';
+  } catch (e) { return ''; }
+  for (const [id, q] of grants) if (q === p) return 'local:' + id;
+  const id = ++grantSeq;
+  grants.set(id, p);
+  return 'local:' + id;
 }
-/** The size to draw at next (the canvas's, in device pixels, capped). */
-function want(w, h) {
-  if (!s || !s.shm) return;
-  const shm = s.shm, dv = new DataView(shm.tmp.buffer);
-  dv.setUint32(0, Math.max(2, Math.min(MAX_W, w | 0)), true); dv.setUint32(4, Math.max(2, Math.min(MAX_H, h | 0)), true);
-  mm.cout(shm.base + 16n, shm.tmp, 8);
+/** What load() will hand mpv: an http(s) address (no control characters) or a granted file; '' for anything else. */
+function target(u) {
+  if (typeof u !== 'string' || u.length > 8192) return '';
+  const g = /^local:(\d{1,9})$/.exec(u);
+  if (g) return grants.get(Number(g[1])) || '';
+  if (!/^https?:\/\/[^\s/?#]+/i.test(u) || /[\x00-\x1f\x7f]/.test(u)) return '';
+  return u.replace(/ /g, '%20');
 }
-/** Play `url` (http(s) or a local path): o = { start, headers: {name: value}, ua, alang, slang, aheadSecs, maxBytes }. */
+function clean(o) {
+  const num = (v, lo, hi, d) => (typeof v === 'number' && isFinite(v) && v >= lo && v <= hi ? v : d);
+  const line = (v, max) => (typeof v === 'string' && v.length <= max && !/[\r\n\0]/.test(v) ? v : '');
+  const langs = (v) => (typeof v === 'string' && /^[a-z]{2,3}(,[a-z]{2,3}){0,7}$/.test(v) ? v : '');
+  const headers = [];
+  if (o.headers && typeof o.headers === 'object') {
+    Object.keys(o.headers).slice(0, 20).forEach((k) => {
+      const v = line(String(o.headers[k] == null ? '' : o.headers[k]), 2048);
+      if (v && /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}$/.test(k)) headers.push([k, v]);
+    });
+  }
+  return { start: num(o.start, 0, 1e7, 0), ua: line(o.ua, 512) || 'Nebula', headers, alang: langs(o.alang), slang: langs(o.slang),
+    aheadSecs: num(o.aheadSecs, 0, 3600, 0), maxBytes: Math.round(num(o.maxBytes, 16, 2048, 150)),
+    aid: typeof o.aid === 'string' && /^\d{1,3}$/.test(o.aid) ? o.aid : 'auto', speed: String(num(o.speed, 0.25, 4, 1)),
+    volume: Math.round(num(o.volume, 0, 130, 100)), mute: o.mute === true };
+}
+/** Play `url` (http(s), or 'local:<id>' from grant()): o = { start, headers, ua, alang, slang, aheadSecs, maxBytes, aid, speed }.
+    A new file starts on its own terms: the preferred language's track, 1×, unless o carries the last file's (a reconnect). */
 function load(url, o) {
-  o = o || {};
-  const my = ++loadSeq;
-  if (s) s.loaded = false;
+  const my = ++loadSeq, file = target(url), opts = clean(o && typeof o === 'object' ? o : {});
+  if (s) { s.loaded = false; s.expect = null; }
+  if (!file) { setImmediate(() => { if (my === loadSeq) emit({ type: 'end', reason: 'error', error: 'this address cannot be played here', detail: '', loaded: false }); }); return { ok: false }; }
   const go = () => {
     if (my !== loadSeq) return;                         // stopped, or another file asked for, while the helper started
     if (!s || !s.sock) return emit({ type: 'end', reason: 'error', error: 'the player stopped', detail: '', loaded: false });
-    s.busy = true;
-    fire(['set', 'start', o.start > 0 ? String(o.start) : 'none']);
-    fire(['set', 'user-agent', o.ua || 'Nebula']);
+    const ss = s;
+    ss.busy = true; ss.expect = null; ss.cur = null; ss.waiting = true; ss.queue = [];
+    fire(['set', 'start', opts.start > 0 ? String(opts.start) : 'none']);
+    fire(['set', 'user-agent', opts.ua]);
     fire(['change-list', 'http-header-fields', 'clr', '']);
-    Object.keys(o.headers || {}).forEach((k) => {
-      if (/^user-agent$/i.test(k)) fire(['set', 'user-agent', o.headers[k]]); else fire(['change-list', 'http-header-fields', 'append', k + ': ' + o.headers[k]]);
+    opts.headers.forEach(([k, v]) => { if (/^user-agent$/i.test(k)) fire(['set', 'user-agent', v]); else fire(['change-list', 'http-header-fields', 'append', k + ': ' + v]); });
+    fire(['set', 'alang', opts.alang]); fire(['set', 'slang', opts.slang]); fire(['set', 'aid', opts.aid]); fire(['set', 'sid', 'no']);
+    fire(['set', 'speed', opts.speed]); fire(['set', 'volume', String(opts.volume)]); fire(['set', 'mute', opts.mute ? 'yes' : 'no']); fire(['set', 'pause', 'no']);
+    fire(['set', 'cache-secs', String(opts.aheadSecs > 0 ? opts.aheadSecs : 3600000)]);   // Buffer ahead, or mpv's own (practically unbounded)
+    fire(['set', 'demuxer-max-bytes', opts.maxBytes + 'MiB']);
+    send(ss, ['loadfile', file, 'replace']).then((d) => {
+      if (DEBUG) console.log('[mpv-host] loadfile answered ' + JSON.stringify(d) + ' load ' + my + '/' + loadSeq + (s === ss ? '' : ' (helper replaced)'));
+      if (my !== loadSeq || s !== ss) return;
+      ss.expect = d && d.playlist_entry_id != null ? d.playlist_entry_id : 'next';
+      ss.waiting = false;
+      const q = ss.queue; ss.queue = [];
+      q.forEach((x) => event(ss, x));
+    }, (e) => {
+      if (my !== loadSeq || s !== ss) return;
+      ss.waiting = false; ss.queue = [];
+      emit({ type: 'end', reason: 'error', error: String(e && e.message || e), detail: '', loaded: false });
     });
-    fire(['set', 'alang', o.alang || '']); fire(['set', 'slang', o.slang || '']); fire(['set', 'sid', 'no']); fire(['set', 'pause', 'no']);
-    fire(['set', 'demuxer-readahead-secs', String(o.aheadSecs > 0 ? o.aheadSecs : 20)]);
-    fire(['set', 'demuxer-max-bytes', (o.maxBytes > 0 ? o.maxBytes : 150) + 'MiB']);
-    fire(['loadfile', String(url), 'replace']);
   };
   if (s && s.sock) { go(); return { ok: true }; }
   start().then(go, (e) => {
@@ -341,30 +373,42 @@ function load(url, o) {
   });
   return { ok: true };
 }
-function command(args) { fire((args || []).map(String)); return 0; }
-function set(name, value) { fire(['set', String(name), String(value)]); return 0; }
+/** Only a seek: a position, absolute or relative. */
+function command(args) {
+  if (!Array.isArray(args) || args[0] !== 'seek' || !NUM.test(String(args[1])) || !SEEK_MODE.test(String(args[2] || 'relative'))) return 0;
+  fire(['seek', String(args[1]), String(args[2] || 'relative')]);
+  return 0;
+}
+/** Only the properties in SETTABLE, each in its own shape. */
+function set(name, value) {
+  const v = String(value);
+  if (!Object.prototype.hasOwnProperty.call(SETTABLE, name) || v.length > 64 || !SETTABLE[name].test(v)) return 0;
+  fire(['set', name, v]);
+  return 0;
+}
 function stop() {
   loadSeq++;
   if (!s) return;
-  s.loaded = false; s.busy = false;
+  s.loaded = false; s.busy = false; s.expect = null; s.waiting = false; s.queue = [];
   if (s.sock) fire(['stop']);
 }
-/** A subtitle the page fetched, written to a file here and added as a track (not shown until chosen): resolves to the track. */
+/** A subtitle the page fetched, written to a file in this helper's folder and added as a track (not shown until chosen). */
 async function subAdd(text, label, lang) {
-  const ss = s;
-  if (!ss || !ss.sock || !ss.dir) return null;
-  const t = String(text || ''), ext = /^\s*WEBVTT/.test(t) ? '.vtt' : (/^\s*\[Script Info\]/i.test(t) ? '.ass' : '.srt');
+  const ss = s, t = String(text || '');
+  if (!ss || !ss.sock || !ss.dir || t.length > 8e6) return null;
+  const lab = String(label || '').replace(/[\r\n\0]/g, ' ').slice(0, 100), lg = /^[A-Za-z-]{0,12}$/.test(String(lang || '')) ? String(lang || '') : '';
+  const ext = /^\s*WEBVTT/.test(t) ? '.vtt' : (/^\s*\[Script Info\]/i.test(t) ? '.ass' : '.srt');
   const file = path.join(ss.dir, 'sub-' + (ss.subFiles.length + 1) + ext);
   try { fs.writeFileSync(file, t); ss.subFiles.push(file); } catch (e) { return null; }
-  try { await send(ss, ['sub-add', file, 'auto', String(label || ''), String(lang || '')]); } catch (e) { return null; }
+  try { await send(ss, ['sub-add', file, 'auto', lab, lg]); } catch (e) { return null; }
   for (let i = 0; i < 40; i++) {                        // the new track reaches the track list a moment later
     const tr = (ss.props['track-list'] || []).filter((x) => x.type === 'sub' && x['external-filename'] === file)[0];
-    if (tr) return { id: tr.id, lang: tr.lang || lang || '', title: tr.title || label || '' };
+    if (tr) return { id: tr.id, lang: tr.lang || lg, title: tr.title || lab };
     await new Promise((r) => setTimeout(r, 50));
   }
   return null;
 }
-/** The page is going away: mpv quits, the helper goes (it also leaves as its stdin closes; killed if it lingers), and
+/** The window is going away: mpv quits, the helper goes (it also leaves as its stdin closes; killed if it lingers), and
     everything it held is removed. */
 function dispose() {
   loadSeq++; starting = null;
@@ -378,4 +422,5 @@ function dispose() {
   drop(ss, false);
 }
 
-module.exports = { available, whyNot, libs, version, on, probe, start, load, command, set, get, stop, subAdd, frame, count, want, snapshot, dispose, MAX_W, MAX_H };
+module.exports = { available, whyNot, libs, version, info, on, setOrigin, probe, start, load, command, set, get, stop, subAdd, grant, snapshot, playing,
+  frameBase, dispose, MAX_W, MAX_H };

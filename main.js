@@ -397,13 +397,13 @@ async function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false, sandbox: false,   // preload.js runs the full-format player (mpv.js: spawns its helper, maps its frames); the page still has no Node
+      nodeIntegration: false, sandbox: true,    // the full-format player lives in the main process (mpv-ipc.js): the page stays sandboxed
       backgroundThrottling: false,
     },
   });
   win.setMenuBarVisibility(false);
-  // Only ever hand real web links to the OS browser: a dropped file used to arrive here as
-  // file:///… and open in whatever player owns the extension.
+  require('./mpv-ipc').attach(win, `http://127.0.0.1:${port}`);
+  // Only real web links go to the OS browser (a dropped file used to arrive as file:///… and open in any player).
   const external = (url) => { if (/^https?:\/\//i.test(url)) shell.openExternal(url); };
   win.webContents.setWindowOpenHandler(({ url }) => { external(url); return { action: 'deny' }; });
   // The window must only ever show the local player — send any in-window

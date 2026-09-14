@@ -24,7 +24,7 @@
       "relay.js",
       "source.js",
       "retime.js",
-      "mpv.js",
+      "mpv-ipc.js",
       "mpv-host.js",
       "renderer/**/*"
     ],
@@ -96,7 +96,7 @@
         "relay.js",
         "source.js",
         "retime.js",
-        "mpv.js",
+        "mpv-ipc.js",
         "mpv-host.js",
         "renderer/**/*",
         "!node_modules/ffprobe-static/bin/{darwin,win32}/**",
@@ -129,9 +129,7 @@
     },
     "asarUnpack": [
       "node_modules/ffmpeg-static/**",
-      "node_modules/ffprobe-static/**",
-      "node_modules/koffi/**",
-      "node_modules/@koromix/**"
+      "node_modules/ffprobe-static/**"
     ],
     "publish": {
       "provider": "github",
@@ -142,7 +140,6 @@
   "dependencies": {
     "electron-updater": "^6.8.9",
     "ffmpeg-static": "^5.3.0",
-    "ffprobe-static": "^3.1.0",
-    "koffi": "^3.3.0"
+    "ffprobe-static": "^3.1.0"
   }
 }

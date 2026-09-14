@@ -6953,7 +6953,7 @@
     v = Math.max(0, Number(v) || 0);
     if (mp.st.dur > 0) v = Math.min(v, Math.max(0, mp.st.dur - 0.5));
     mp.pending = v; mp.pendingAt = Date.now(); mp.seeking = true; mp.ended = false;
-    mpvApi.command(['seek', String(v), 'absolute']);
+    mpvApi.command(['seek', v.toFixed(3), 'absolute']);
     mpvFire('seeking');
   }
   var MPV_OWN = ['currentTime','duration','paused','ended','seeking','readyState','networkState','buffered','volume','muted','playbackRate','videoWidth',
@@ -6975,10 +6975,10 @@
       return { length: on ? 1 : 0, start: function(){ return Math.max(0, t - 1); }, end: function(){ return t + a; } };
     });
     prop('volume', function(){ return (mp && mp.st.vol >= 0) ? Math.min(1, mp.st.vol / 100) : 1; },
-      function(v){ v = Math.max(0, Math.min(1, Number(v) || 0)); if (mp) mp.st.vol = v * 100; mpvApi.set('volume', String(Math.round(v * 100))); mpvFire('volumechange'); });
-    prop('muted', function(){ return !!(mp && mp.st.mute); }, function(v){ if (mp) mp.st.mute = !!v; mpvApi.set('mute', v ? 'yes' : 'no'); mpvFire('volumechange'); });
+      function(v){ v = Math.max(0, Math.min(1, Number(v) || 0)); if (mp){ mp.st.vol = v * 100; mpvHold('vol', v * 100); } mpvApi.set('volume', String(Math.round(v * 100))); mpvFire('volumechange'); });
+    prop('muted', function(){ return !!(mp && mp.st.mute); }, function(v){ if (mp){ mp.st.mute = !!v; mpvHold('mute', !!v); } mpvApi.set('mute', v ? 'yes' : 'no'); mpvFire('volumechange'); });
     prop('playbackRate', function(){ return (mp && mp.st.speed > 0) ? mp.st.speed : 1; },
-      function(v){ v = Number(v) || 1; if (mp) mp.st.speed = v; mpvApi.set('speed', String(v)); mpvFire('ratechange'); });
+      function(v){ v = Number(v) || 1; if (mp){ mp.st.speed = v; mpvHold('speed', v); } mpvApi.set('speed', String(v)); mpvFire('ratechange'); });
     prop('videoWidth', function(){ return (mp && mp.st.w) || 0; });
     prop('videoHeight', function(){ return (mp && mp.st.h) || 0; });
     prop('error', function(){ return (mp && mp.error) ? { code: 4, message: mp.error } : null; });
@@ -6989,22 +6989,45 @@
     method('play', function(){
       if (!mp) return Promise.resolve();
       if (mp.ended) mpvSeek(0);
-      mp.st.pause = false; mpvApi.set('pause', 'no'); mpvFire('play'); if (!mp.st.cache) mpvFire('playing');
+      mpvFreeze(); mp.st.pause = false; mpvHold('pause', false); mpvApi.set('pause', 'no'); mpvFire('play'); if (!mp.st.cache) mpvFire('playing');
       return Promise.resolve();
     });
-    method('pause', function(){ if (!mp) return; mp.st.pause = true; mpvApi.set('pause', 'yes'); mpvFire('pause'); });
+    method('pause', function(){ if (!mp) return; mpvFreeze(); mp.st.pause = true; mpvHold('pause', true); mpvApi.set('pause', 'yes'); mpvFire('pause'); });
     method('load', function(){});
-    method('getVideoPlaybackQuality', function(){ return { droppedVideoFrames: (mp && mp.st.drop) || 0, totalVideoFrames: (mp && mp.st.frames) || 0 }; });
+    // mpv's drops out of the frames its helper drew (the page may show fewer: a slow screen skips to the newest)
+    method('getVideoPlaybackQuality', function(){ var s = (mp && mp.st) || {}; return { droppedVideoFrames: mpvDropped(s), totalVideoFrames: (s.drawn || 0) + (s.drop || 0) }; });
     method('requestPictureInPicture', function(){ return Promise.reject(new Error('Picture-in-picture is not available with the full-format player.')); });
   }
   function mpvUnbind(){ MPV_OWN.forEach(function(k){ try { delete video[k]; } catch(e){} }); }
+  /** A change asked for here holds until mpv reports it (or 1.5 s pass): a state that left mpv before the change landed must
+      not flip it back and forth (a party host would pass the flicker on). */
+  function mpvHold(k, v){ if (!mp) return; if (!mp.hold) mp.hold = {}; mp.hold[k] = { v: v, at: Date.now() }; }
+  /** This file's frames that never reached the screen: mpv's drops, and those drawn faster than the page could show them. */
+  function mpvDropped(s){ return (s.drop || 0) + Math.max(0, (s.drawn || 0) - (s.frames || 0)); }
+  /** Where the clock is, fixed as the latest word (pausing must not jump back to mpv's last report). */
+  function mpvFreeze(){ if (!mp) return; mp.st.t = mpvNow(); mp.at = Date.now(); }
   /** mpv's picture of itself (four times a second): the element's events follow from what changed. */
   function mpvState(s){
     if (!mp) return;
     var p = mp.st, first = !mp.at;
+    if (mp.hold){
+      for (var hk in mp.hold){
+        var hv = mp.hold[hk], tol = hk === 'vol' ? 0.6 : 0.001;
+        var agrees = typeof hv.v === 'number' ? Math.abs((s[hk] || 0) - hv.v) < tol : s[hk] === hv.v;
+        if (agrees || Date.now() - hv.at > 1500) delete mp.hold[hk]; else s[hk] = hv.v;
+      }
+    }
     mp.st = s; mp.at = Date.now();
     if (mp.pending != null && ((!s.seeking && s.t != null && Math.abs(s.t - mp.pending) < 1.5) || Date.now() - mp.pendingAt > 8000)) mp.pending = null;
-    if (!first && p.pause !== s.pause){ mpvFire(s.pause ? 'pause' : 'play'); if (!s.pause && !s.cache) mpvFire('playing'); }
+    if (!first && p.pause !== s.pause){
+      mpvFire(s.pause ? 'pause' : 'play'); if (!s.pause && !s.cache) mpvFire('playing');
+      try { navigator.mediaSession.playbackState = s.pause ? 'paused' : 'playing'; } catch(e){}
+    }
+    // the spinner: buffering, a seek on its way, a reconnect
+    var busy = !!(mp.reconnecting || (mp.loaded && (s.cache || s.seeking || mp.seeking)));
+    if (busy !== !!mp.spin){ mp.spin = busy; try { $id('puiSpin').style.display = busy ? 'block' : 'none'; } catch(e){} }
+    // a reconnect is allowed again after a minute of healthy playback (as the engine's own retry re-arms)
+    if (mp.retried && mp.retriedAt && s.pause === false && !s.cache && Date.now() - mp.retriedAt > 60000) mp.retried = false;
     if (s.cache && !p.cache) mpvFire('waiting');
     if (!s.cache && p.cache && !s.pause) mpvFire('playing');
     if (s.dur !== p.dur) mpvFire('durationchange');
@@ -7016,11 +7039,12 @@
   }
   function mpvOnEvent(e){
     // the helper would not start: this session plays through the app's own engine (Settings says why)
-    if (e && e.type === 'available'){ mpvInfo = { available: !!e.ok, error: e.error || '', version: e.version || '' }; return; }
+    if (e && e.type === 'available'){ mpvInfo = { available: !!e.ok, error: e.error || '', version: e.version || '' }; try { engineRowRender(); } catch(x){} return; }
     if (!mp || !e) return;
     if (e.type === 'state'){ mpvState(e.s || {}); return; }
     if (e.type === 'loaded'){
       mp.loaded = true; mp.tracks = e.tracks || [];
+      if (mp.reconnecting){ mpvReapply(); return; }
       ['loadedmetadata','durationchange','loadeddata','canplay'].forEach(mpvFire);
       if (mp.wait){ var w = mp.wait; mp.wait = null; w.ok(); }
       return;
@@ -7036,17 +7060,51 @@
     var why = mpvErrLine(e);
     if (mp.wait){ var w = mp.wait; mp.wait = null; w.no({ code: 'mpv', mpv: true, data: why }); return; }
     if (!mp.retried && mp.loaded){
-      mp.retried = true; mp.loaded = false; setStatus('Reconnecting…', 'info');
-      mpvApi.load(mp.url, mpvLoadOpts(mpvNow()));
+      // once more from where it was, with this play's sound track and speed (a new file would start on its own terms)
+      mp.retried = true; mp.retriedAt = Date.now(); mp.loaded = false; mp.reconnecting = true; mp.spin = true;
+      setStatus('Reconnecting…', 'info');
+      try { $id('puiSpin').style.display = 'block'; } catch(x){}
+      var o = mpvLoadOpts(mpvNow());
+      if (/^\d+$/.test(String(mp.st.aid || ''))) o.aid = String(mp.st.aid);
+      if (mp.st.speed > 0) o.speed = mp.st.speed;
+      mpvApi.load(mp.url, o);
       return;
     }
+    mp.reconnecting = false; mp.spin = false;
     mp.error = why; mpvFire('error'); setStatus(why, 'err');
     try { $id('puiSpin').style.display = 'none'; } catch(x){}
   }
+  /** A reconnect reopened the file: what this play had chosen goes back on — the subtitle look and offset, the sound level,
+      the subtitle files it was given (re-added: the reopened file has none), the one showing. */
+  function mpvReapply(){
+    var session = mp, subs = mp.subs || [], was = mp.pick;
+    mp.reconnecting = false; mp.subs = [];
+    mpvSubStyle();
+    mpvApi.set('sub-delay', String(subOffset || 0));
+    if (mp.st.vol >= 0) mpvApi.set('volume', String(Math.round(mp.st.vol)));
+    mpvApi.set('mute', mp.st.mute ? 'yes' : 'no');
+    subs.reduce(function(chain, sb){
+      return chain.then(function(){
+        if (mp !== session) return null;
+        return mpvApi.subAdd(sb.text, sb.label, sb.lang).then(function(t){
+          if (!t || mp !== session) return;
+          mp.subs.push({ text: sb.text, label: sb.label, lang: sb.lang, id: t.id });
+          if (sb.id === was) mp.pick = t.id;
+        });
+      });
+    }, Promise.resolve()).then(function(){
+      if (mp !== session) return;
+      mpvApi.set('sid', (mp.show && mp.pick != null) ? String(mp.pick) : 'no');   // an embedded track keeps its number
+    });
+    clearStatus();
+  }
   function mpvErrLine(e){
     var d = String((e && (e.detail || e.error)) || ''), m = /HTTP error (\d{3})|\b(4\d\d|5\d\d) (Forbidden|Not Found|Gone|Unauthorized|Service Unavailable)/i.exec(d);
+    try { if (d) console.warn('[full-format] ' + d); } catch(x){}
     if (m) return 'This stream cannot play here — its host answered ' + (m[1] || m[2]) + '. Try another source.';
-    return 'This stream could not be played' + (d ? ' (' + d.slice(0, 140) + ')' : '') + '. Try another source.';
+    if (/recognize file format|no video or audio|unrecognized/i.test(d)) return 'This link is not a film this player can open. Try another source.';
+    if (/stopped unexpectedly/i.test(d)) return 'The player stopped unexpectedly. Try again, or another source.';
+    return 'This stream could not be played. Try another source.';
   }
   /** Language codes mpv matches a track by: the two-letter code and the three-letter ones files carry. */
   function mpvLangs(code){
@@ -7058,12 +7116,17 @@
   function mpvLoadOpts(startAt){
     var n = bufferSecs();
     return { start: startAt > 0 ? startAt : 0, headers: ctx.playHeaders || {}, ua: navigator.userAgent, alang: mpvLangs(prefLang('audioLang')),
-      slang: mpvLangs(prefLang('subLang')), aheadSecs: n || 0, maxBytes: n >= 240 ? 400 : (n >= 120 ? 250 : 150) };
+      slang: mpvLangs(prefLang('subLang')), aheadSecs: n || 0, maxBytes: n >= 240 ? 400 : (n >= 120 ? 250 : 150),
+      volume: (mp && mp.st.vol >= 0) ? Math.round(mp.st.vol) : 100, mute: !!(mp && mp.st.mute) };
   }
   /** Play `url` through mpv: resolves once the file has opened (like the engine's load()), rejects with a sentence. */
   async function mpvStart(url, startAt, seq){
-    mp = { seq: seq, url: url, st: { pause: false }, at: 0, loaded: false, ended: false, seeking: false, pending: null, pendingAt: 0, tracks: [],
-      wait: null, error: '', retried: false };
+    // the element's own sound level carries over (both players answer one volume control)
+    var ev = 1, em = false;
+    try { ev = Math.max(0, Math.min(1, Number(video.volume))); em = !!video.muted; } catch(e){}
+    if (!(ev >= 0)) ev = 1;
+    mp = { seq: seq, url: url, st: { pause: false, vol: ev * 100, mute: em }, at: 0, loaded: false, ended: false, seeking: false, pending: null, pendingAt: 0,
+      tracks: [], wait: null, error: '', retried: false, retriedAt: 0, reconnecting: false, spin: false, hold: null, subs: [], pick: null, show: false };
     var session = mp;
     player = mpvShim();
     // the engine attached a source of its own before mpv was chosen: let it go, so the element holds nothing (and says so)
@@ -7071,7 +7134,7 @@
     mpvBind();
     video.style.display = 'block';
     $id('mpvView').style.display = 'block';
-    if (!mpvApi.attach('mpvView')){ mpvStop(); throw { code: 'mpv', mpv: true, data: 'This computer could not draw the picture (no WebGL). Settings › Player › Built-in plays instead.' }; }
+    if (!mpvApi.attach('mpvView')){ mpvStop(); throw { code: 'mpv', mpv: true, data: 'This computer could not draw the picture here.' }; }
     mpvSubStyle();
     var opened = new Promise(function(ok, no){ session.wait = { ok: ok, no: no }; });
     var r = mpvApi.load(url, mpvLoadOpts(startAt));
@@ -7084,13 +7147,51 @@
     } finally { clearTimeout(timer); if (session.wait) session.wait = null; }
     if (seq !== playSeq || mp !== session) return;
     mpvApi.set('sub-delay', String(subOffset || 0));
+    mpvMedia(true);
   }
   function mpvStop(){
     var was = mp; mp = null;
     if (was && was.wait){ var w = was.wait; was.wait = null; try { w.no({ code: 'mpv', mpv: true, stopped: true }); } catch(e){} }
     try { mpvApi.stop(); } catch(e){}
     mpvUnbind();
+    // the sound level set while mpv played is the element's again
+    if (was && was.st){ try { if (was.st.vol >= 0) video.volume = Math.min(1, was.st.vol / 100); video.muted = !!was.st.mute; } catch(e){} }
+    mpvMedia(false);
     var cv = $id('mpvView'); if (cv) cv.style.display = 'none';
+  }
+  // Media keys and the system's now-playing panel follow a page that is playing sound; mpv plays it outside the page, so a
+  // silent loop stands in while the full-format player is on, and the keys reach mpv through the media session.
+  var mpvKeep = null;
+  function mpvSilence(){
+    var n = 8000, b = new ArrayBuffer(44 + n), d = new DataView(b);
+    function str(o, s){ for (var i = 0; i < s.length; i++) d.setUint8(o + i, s.charCodeAt(i)); }
+    str(0, 'RIFF'); d.setUint32(4, 36 + n, true); str(8, 'WAVE'); str(12, 'fmt '); d.setUint32(16, 16, true); d.setUint16(20, 1, true); d.setUint16(22, 1, true);
+    d.setUint32(24, 8000, true); d.setUint32(28, 8000, true); d.setUint16(32, 1, true); d.setUint16(34, 8, true); str(36, 'data'); d.setUint32(40, n, true);
+    for (var i = 0; i < n; i++) d.setUint8(44 + i, 128);            // one second of 8-bit silence (128 is the zero line)
+    return URL.createObjectURL(new Blob([b], { type: 'audio/wav' }));
+  }
+  function mpvMedia(on){
+    var ms = navigator.mediaSession, acts = ['play', 'pause', 'stop', 'seekbackward', 'seekforward', 'seekto'];
+    try {
+      if (on){
+        if (!mpvKeep){ mpvKeep = new Audio(mpvSilence()); mpvKeep.loop = true; }
+        var pl = mpvKeep.play(); if (pl && pl.catch) pl.catch(function(){});
+        if (!ms) return;
+        ms.metadata = new MediaMetadata({ title: ctx.playTitle || ctx.streamTitle || 'Nebula', artist: 'Nebula', artwork: ctx.playPoster ? [{ src: ctx.playPoster }] : [] });
+        ms.playbackState = 'playing';
+        var h = {
+          play: function(){ video.play(); }, pause: function(){ video.pause(); }, stop: function(){ video.pause(); },
+          seekbackward: function(){ mpvSeek(mpvNow() - seekStepSecs()); }, seekforward: function(){ mpvSeek(mpvNow() + seekStepSecs()); },
+          seekto: function(dt){ if (dt && dt.seekTime >= 0) mpvSeek(dt.seekTime); }
+        };
+        acts.forEach(function(a){ try { ms.setActionHandler(a, h[a]); } catch(e){} });
+      } else {
+        if (mpvKeep) mpvKeep.pause();
+        if (!ms) return;
+        ms.metadata = null; ms.playbackState = 'none';
+        acts.forEach(function(a){ try { ms.setActionHandler(a, null); } catch(e){} });
+      }
+    } catch(e){}
   }
   /** The file's tracks as mpv lists them now (the selection moves: never trust an old copy). */
   function mpvTracksNow(){
@@ -7112,18 +7213,19 @@
     if (!mp) return null;
     var t = await mpvApi.subAdd(text, label || '', lang || '');
     if (!t || !mp) return null;
+    mp.subs.push({ text: text, label: label || '', lang: lang || '', id: t.id });   // kept: a reconnect adds it again
     mpvTracksNow();
     return { id: t.id, language: t.lang || lang || 'und', label: t.title || label || '', kind: 'subtitles', active: false };
   }
   /** What the rest of the player asks a streaming engine for, answered from mpv. */
   function mpvShim(){
-    var show = false, pick = null;
+    // the chosen subtitle lives on the play (mp.show, mp.pick): a reconnect puts it back
     function subs(){
       return mpvTracksNow().filter(function(t){ return t.type === 'sub'; }).map(function(t){
-        return { id: t.id, language: t.lang || 'und', label: t.title || '', kind: 'subtitles', active: show && t.id === pick };
+        return { id: t.id, language: t.lang || 'und', label: t.title || '', kind: 'subtitles', active: !!(mp && mp.show && t.id === mp.pick) };
       });
     }
-    function apply(){ mpvApi.set('sid', (show && pick != null) ? String(pick) : 'no'); }
+    function apply(){ if (mp) mpvApi.set('sid', (mp.show && mp.pick != null) ? String(mp.pick) : 'no'); }
     return {
       mpv: true,
       destroy: function(){ mpvStop(); return Promise.resolve(); },
@@ -7137,15 +7239,15 @@
       },
       isLive: function(){ return !!(mp && mp.st.live); }, isBuffering: function(){ return !!(mp && mp.st.cache); },
       getStats: function(){ var s = (mp && mp.st) || {}; return { width: s.w || 0, height: s.h || 0, streamBandwidth: (s.vbr || 0) + (s.abr || 0), estimatedBandwidth: 0,
-        decodedFrames: s.frames || 0, droppedFrames: s.drop || 0, liveLatency: NaN }; },
+        decodedFrames: (s.drawn || 0) + (s.drop || 0), droppedFrames: mpvDropped(s), liveLatency: NaN }; },
       getVariantTracks: function(){ return []; }, selectVariantTrack: function(){}, getAudioLanguagesAndRoles: function(){ return []; }, selectAudioLanguage: function(){},
       getImageTracks: function(){ return []; }, getThumbnails: function(){ return null; },
       getNetworkingEngine: function(){ return { registerRequestFilter: function(){}, registerResponseFilter: function(){} }; },
       addEventListener: function(){}, removeEventListener: function(){},
       getTextTracks: subs,
-      isTextTrackVisible: function(){ return show && pick != null; },
-      selectTextTrack: function(t){ pick = t ? t.id : null; apply(); },
-      setTextTrackVisibility: function(on){ show = !!on; if (show && pick == null){ var tt = subs(); if (tt.length) pick = tt[0].id; } apply(); },
+      isTextTrackVisible: function(){ return !!(mp && mp.show && mp.pick != null); },
+      selectTextTrack: function(t){ if (mp) mp.pick = t ? t.id : null; apply(); },
+      setTextTrackVisibility: function(on){ if (!mp) return; mp.show = !!on; if (mp.show && mp.pick == null){ var tt = subs(); if (tt.length) mp.pick = tt[0].id; } apply(); },
       addTextTrackAsync: function(url, lang, kind, mime, codec, label){ return mpvAddSub(url, lang, label); }
     };
   }
@@ -7397,6 +7499,12 @@
         mpvStop();
         if (err && err.stopped) return;
         var why = (err && err.mpv && err.data) || 'This stream could not be played. Try another source.';
+        // a file from this computer the full-format player could not open: the engine plays it from a blob, as it always did
+        if (!loaded && ctx.localFile && ctx.localPath === rawUrl){
+          var lf = ctx.localFile; ctx.localFile = null; ctx.localPath = '';
+          setStatus('Trying the built-in player…', 'info');
+          return playBlobFile(lf);
+        }
         if (!/answered 4\d\d/.test(why) && !loaded){ setStatus('Trying the built-in player…', 'info'); ctx.forceBuiltin = true; return playUrl(rawUrl, clearKeys, title, subtitles, mimeType); }
         setStatus(why, 'err'); $id('puiSpin').style.display = 'none';
         return;
@@ -8148,6 +8256,7 @@
     var res = (w && h) ? (w + '×' + h) : '—';
     if (act && act.frameRate) res += ' · ' + Math.round(act.frameRate) + ' fps';
     if (act && act.hdr && /pq|hlg|smpte2084/i.test(String(act.hdr))) res += ' · HDR';
+    if (player && player.mpv && mp && /^(pq|hlg)$/.test(String(mp.st.gamma || ''))) res += ' · HDR';   // tone-mapped for this screen (the shell's shader)
     row('Picture', res);
     if (player && player.mpv && mp){
       var ms = mp.st, mvc = String(ms.vcodec || '').split(/[ (]/)[0].toLowerCase(), mac = String(ms.acodec || '').toLowerCase();
@@ -8565,8 +8674,8 @@
   function bufferLabel(n){ return n >= 60 ? (n / 60) + ' min' : n + ' s'; }
   function applyBufferPolicy(){
     if (player && player.mpv){
-      var mn = bufferSecs();
-      mpvApi.set('demuxer-readahead-secs', String(mn || 20)); mpvApi.set('demuxer-max-bytes', (mn >= 240 ? 400 : (mn >= 120 ? 250 : 150)) + 'MiB');
+      var mn = bufferSecs();   // Buffer ahead is how far mpv's cache reads (Auto: mpv's own, as far as its memory allows)
+      mpvApi.set('cache-secs', String(mn || 3600000)); mpvApi.set('demuxer-max-bytes', (mn >= 240 ? 400 : (mn >= 120 ? 250 : 150)) + 'MiB');
       return;
     }
     if (!player || player.tc) return;
@@ -10699,17 +10808,7 @@
     segChips('setQuality', [['Auto','auto'], ['Start high','high'], ['Data saver','saver']], pr.quality || 'auto', function(v){ setPref('quality', v); applyQualityPolicy(); });
     segChips('setMaxRes', [['No cap','none'], ['720p','720'], ['1080p','1080'], ['1440p','1440']], pr.maxRes === '720' || pr.maxRes === '1080' || pr.maxRes === '1440' ? pr.maxRes : 'none', function(v){ setPref('maxRes', v); applyQualityPolicy(); });
     segChips('setBuffer', [['Auto','auto'], ['1 min',60], ['2 min',120], ['4 min',240]], bufferSecs() || 'auto', function(v){ setPref('buffer', v); applyBufferPolicy(); });
-    // Settings › Player (desktop): the full-format player, or the app's own engine
-    var engRow = $id('setEngineRow');
-    if (engRow && mpvApi){
-      var engOk = !!(mpvInfo && mpvInfo.available), linuxBox = /Linux/.test(navigator.userAgent) && !/Android/.test(navigator.userAgent);
-      engRow.style.display = '';
-      segChips('setEngine', [['Full-format','mpv'], ['Built-in','builtin']], (engOk && getPrefs().engine !== 'builtin') ? 'mpv' : 'builtin',
-        function(v){ if (v === 'mpv' && !engOk) return; setPref('engine', v); });
-      $id('setEngineSub').textContent = engOk
-        ? 'Full-format plays every file, every sound and subtitle track, the way a desktop player does · Built-in uses the app’s streaming engine · From the next play'
-        : 'Full-format needs a player library this computer does not have' + (linuxBox ? ' — install the libmpv2 package (libmpv1 on older systems) and restart Nebula' : '') + ' · Until then the built-in engine plays';
-    }
+    engineRowRender();
     relayRowsRender();                 // Play through your PC (TV) · Share with your TV (desktop)
     stepper('setAudioLang', PREF_LANGS, pr.audioLang || '', function(v){ setPref('audioLang', v); applyLangPrefs(); });
     stepper('setSubLang', PREF_LANGS, pr.subLang || '', function(v){ setPref('subLang', v); applyLangPrefs(); });
@@ -10899,11 +10998,37 @@
     if (!f) return;
     if (lastFileUrl){ try { URL.revokeObjectURL(lastFileUrl); } catch(e){} lastFileUrl = null; }
     clearPlayIdentity();
-    // the full-format player reads the file where it lies (every codec, every track); the engine needs a blob of it
-    var fp = (mpvReady() && f.path) ? String(f.path) : '';
-    if (fp){ ctx.localPath = fp; playUrl(fp, null, f.name, [], fileMime(f)); return; }
+    ctx.localFile = null;
+    // the full-format player reads the file where it lies (every codec, every track) — the shell hands the page a name for
+    // it ('local:N'), never its path — and the engine needs a blob of it
+    if (mpvReady() && mpvApi.localFile){
+      mpvApi.localFile(f).then(function(id){
+        if (!id) return playBlobFile(f);
+        ctx.localPath = id; ctx.localFile = f;
+        playUrl(id, null, f.name, [], fileMime(f));
+      }, function(){ playBlobFile(f); });
+      return;
+    }
+    playBlobFile(f);
+  }
+  function playBlobFile(f){
     lastFileUrl = URL.createObjectURL(f);
     playUrl(lastFileUrl, null, f.name, [], fileMime(f));
+  }
+  /** Settings › Player (desktop): the full-format player, or the app's own engine — redrawn when the shell's check of this
+      computer answers (a moment after launch). */
+  function engineRowRender(){
+    var engRow = $id('setEngineRow');
+    if (!engRow || !mpvApi) return;
+    var engOk = !!(mpvInfo && mpvInfo.available), ua = navigator.userAgent || '', winBox = /Windows/.test(ua), linuxBox = /Linux/.test(ua) && !/Android/.test(ua);
+    engRow.style.display = '';
+    segChips('setEngine', [['Full-format','mpv'], ['Built-in','builtin']], (engOk && getPrefs().engine !== 'builtin') ? 'mpv' : 'builtin',
+      function(v){ if (v === 'mpv' && !engOk) return; setPref('engine', v); });
+    $id('setEngineSub').textContent = engOk
+      ? 'Full-format plays every file, every sound and subtitle track, the way a desktop player does · Built-in uses the app’s streaming engine · From the next play'
+      : (winBox ? 'Full-format could not start on this computer — reinstalling Nebula puts back what it needs'
+        : linuxBox ? 'Full-format needs a video library this computer does not have — install the libmpv2 package (Fedora: mpv-libs, Arch: mpv) and restart Nebula'
+        : 'Full-format is not available on this computer') + ' · Until then the built-in engine plays';
   }
   $id('filePick').onchange = function(){
     playLocalFile(this.files && this.files[0]);
