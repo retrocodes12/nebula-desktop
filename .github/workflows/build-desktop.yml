@@ -97,7 +97,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          Continue watching leaves out what you were watching from an add-on you switched off; switch the add-on back on and it returns.
+          Dolby and DTS films now play with sound on Linux (the converter could not reach any stream by name there), converted films no longer stop after half a minute on Windows or Linux, and streams whose host serves only the app play through it. The fullscreen and mini-player buttons keep their icons, and a track without a language is no longer called Unknown.
 
           Linux: the AppImage needs no install — download it, allow it to run as a program, and open it. The .deb installs it like any other app, with a menu entry, and asks for your password when it updates itself. On Windows, Setup is the installer and Portable runs without installing; neither is signed, so SmartScreen may warn the first time (More info, then Run anyway).
           EOF
