@@ -7019,10 +7019,10 @@
     }
     mp.st = s; mp.at = Date.now();
     if (mp.pending != null && ((!s.seeking && s.t != null && Math.abs(s.t - mp.pending) < 1.5) || Date.now() - mp.pendingAt > 8000)) mp.pending = null;
-    if (!first && p.pause !== s.pause){
-      mpvFire(s.pause ? 'pause' : 'play'); if (!s.pause && !s.cache) mpvFire('playing');
-      try { navigator.mediaSession.playbackState = s.pause ? 'paused' : 'playing'; } catch(e){}
-    }
+    if (!first && p.pause !== s.pause){ mpvFire(s.pause ? 'pause' : 'play'); if (!s.pause && !s.cache) mpvFire('playing'); }
+    // the system's now-playing state follows (a pause asked for here changed mp.st before this, so compare with what was said)
+    var msWant = (s.pause === false && !mp.ended) ? 'playing' : 'paused';
+    if (mp.msState !== msWant){ mp.msState = msWant; try { navigator.mediaSession.playbackState = msWant; } catch(e){} }
     // the spinner: buffering, a seek on its way, a reconnect
     var busy = !!(mp.reconnecting || (mp.loaded && (s.cache || s.seeking || mp.seeking)));
     if (busy !== !!mp.spin){ mp.spin = busy; try { $id('puiSpin').style.display = busy ? 'block' : 'none'; } catch(e){} }
