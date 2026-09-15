@@ -266,6 +266,12 @@ function starveCheck(ss) {
   const P = ss.props, t = P['time-pos'], got = P['demuxer-cache-time'];
   if (typeof t !== 'number' || typeof got !== 'number') return;
   const now = Date.now(), idle = P['demuxer-cache-idle'] === true;
+  // a failed connection FFmpeg picked up again by itself (reconnect on a seekable host): once the download has moved on by a
+  // second of film — judged from 2 s after the failure, when what had already arrived is read in — it was no failure (round 13)
+  if (ss.neterr != null && ss.netAt && now - ss.netAt >= 2000) {
+    if (ss.netGot == null) ss.netGot = got;
+    else if (!idle && got > ss.netGot + 1) { ss.neterr = null; ss.netGot = null; ss.netAt = 0; }
+  }
   if (got > ss.headEnd + 0.01) {
     ss.headEnd = got;
     // (once marked, only half a second's film read in again clears it: at the end of file mpv counts the last packet — seen 09-15)
@@ -293,7 +299,9 @@ function event(ss, m) {
     // where the download stood when the connection failed (film seconds): an end of file there is a lost connection, not the
     // film's end — even where mpv's length is only its estimate of what it has read (snapshot().neterr)
     const P = ss.props;
-    if (NET_ERR.test(t) && typeof P['time-pos'] === 'number') ss.neterr = P['time-pos'] + (typeof P['demuxer-cache-duration'] === 'number' ? P['demuxer-cache-duration'] : 0);
+    if (NET_ERR.test(t) && typeof P['time-pos'] === 'number') {
+      ss.neterr = P['time-pos'] + (typeof P['demuxer-cache-duration'] === 'number' ? P['demuxer-cache-duration'] : 0); ss.netAt = Date.now(); ss.netGot = null;
+    }
     if (ss === s && /Cannot seek/i.test(t)) emit({ type: 'seekfail' });   // (mpv refused a seek: no restart will come for it)
     return;
   }
@@ -306,7 +314,7 @@ function event(ss, m) {
     ss.cur = m.playlist_entry_id != null ? m.playlist_entry_id : 'any';
     if (ss.expect === 'next') ss.expect = ss.cur;
     if (!ours(ss)) return;                              // a file an earlier load asked for, already replaced
-    ss.recent = []; ss.neterr = null; ss.headEnd = -1; ss.headAt = 0; ss.starve = null; ss.idle = undefined; ss.busy = true; emit({ type: 'start' });
+    ss.recent = []; ss.neterr = null; ss.netAt = 0; ss.headEnd = -1; ss.headAt = 0; ss.starve = null; ss.idle = undefined; ss.busy = true; emit({ type: 'start' });
     if (ss.oldSubs && ss.oldSubs.length) { ss.oldSubs.forEach((f) => fs.unlink(f, () => {})); ss.oldSubs = []; }   // mpv has let them go
   } else if (m.event === 'file-loaded') {
     if (!ours(ss)) return;
@@ -395,7 +403,7 @@ function load(url, o) {
     if (my !== loadSeq) return;                         // stopped, or another file asked for, while the helper started
     if (!s || !s.sock) return emit({ type: 'end', reason: 'error', error: 'the player stopped', detail: '', loaded: false });
     const ss = s;
-    ss.busy = true; ss.expect = null; ss.cur = null; ss.waiting = true; ss.queue = []; ss.neterr = null;
+    ss.busy = true; ss.expect = null; ss.cur = null; ss.waiting = true; ss.queue = []; ss.neterr = null; ss.netAt = 0;
     // another film: the last one's subtitle files go once mpv has let them go (at this file's start); a reconnect keeps them
     if (!opts.again) { ss.oldSubs = (ss.oldSubs || []).concat(ss.subFiles); ss.subFiles = []; }
     fire(['set', 'start', opts.start > 0 ? String(opts.start) : 'none']);
