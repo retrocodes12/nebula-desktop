@@ -207,11 +207,12 @@ function mpvPicture() {
     set(k, v) { ipcRenderer.send('mpv-set', String(k), String(v)); return 0; },
     /** An observed property in mpv's string form (the last state), or the track list as JSON. */
     get(k) { if (k === 'track-list') return JSON.stringify(tracks); const v = props[k]; return v == null ? null : String(v); },
-    stop() {
+    /** keep: the last picture stays on the canvas (a play that failed stands under its sentence). */
+    stop(keep) {
       running = false; pumpId++; next = null;
       if (raf) { cancelAnimationFrame(raf); raf = 0; }
       ipcRenderer.send('mpv-stop');
-      if (gl && !gl.isContextLost()) gl.clear(gl.COLOR_BUFFER_BIT);
+      if (!keep && gl && !gl.isContextLost()) gl.clear(gl.COLOR_BUFFER_BIT);
     },
     /** frames = shown here; drawn = the helper's count (more than shown when the page cannot take them as fast). */
     stats() {
@@ -232,7 +233,7 @@ const mpv = mpvPicture();
 contextBridge.exposeInMainWorld('nebulaDesktop', {
   mpv: mpv ? {
     info: () => mpv.info(), on: (cb) => mpv.on(cb), attach: (id) => mpv.attach(id), load: (url, o) => mpv.load(url, o),
-    command: (a) => mpv.command(a), set: (n, v) => mpv.set(n, v), get: (n) => mpv.get(n), stop: () => mpv.stop(), stats: () => mpv.stats(),
+    command: (a) => mpv.command(a), set: (n, v) => mpv.set(n, v), get: (n) => mpv.get(n), stop: (keep) => mpv.stop(keep === true), stats: () => mpv.stats(),
     subAdd: (text, label, lang) => mpv.subAdd(text, label, lang), localFile: (f) => mpv.localFile(f),
   } : null,
   relay: {

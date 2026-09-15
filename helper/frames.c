@@ -49,6 +49,7 @@ static int spawn(void (*fn)(void *), void *arg) {
 #include <netinet/tcp.h>
 #include <pthread.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
 typedef int sock_t;
@@ -202,6 +203,15 @@ static void accept_loop(void *arg) {
     no_inherit(c);
     int one = 1;
     setsockopt(c, IPPROTO_TCP, TCP_NODELAY, (const char *)&one, sizeof one);
+    /* a connection that neither asks nor reads for 5 s gives its place up: at most MAXCONN, and a stalled one must not starve
+       the page (whose asks come many times a second; a hidden page asks nothing, and simply reconnects) */
+#ifdef _WIN32
+    DWORD to = 5000;
+#else
+    struct timeval to = { 5, 0 };
+#endif
+    setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, (const char *)&to, sizeof to);
+    setsockopt(c, SOL_SOCKET, SO_SNDTIMEO, (const char *)&to, sizeof to);
     lock();
     int room = conns < MAXCONN;
     if (room) conns++;

@@ -13,7 +13,7 @@ const MAX_W = 1920, MAX_H = 1080, WIN = process.platform === 'win32';
 const OBSERVE = ['time-pos', 'duration', 'pause', 'paused-for-cache', 'seeking', 'eof-reached', 'idle-active', 'volume', 'mute', 'speed',
   'demuxer-cache-duration', 'dwidth', 'dheight', 'frame-drop-count', 'estimated-vf-fps', 'container-fps', 'video-bitrate', 'audio-bitrate',
   'aid', 'sid', 'audio-codec-name', 'video-codec', 'audio-params/channel-count', 'demuxer-via-network', 'track-list', 'sub-text', 'mpv-version',
-  'hwdec-current', 'video-params/gamma', 'video-params/primaries'];
+  'hwdec-current', 'video-params/gamma', 'video-params/primaries', 'seekable', 'file-size'];
 const GETTABLE = ['aid', 'sid', 'speed', 'volume', 'mute', 'pause', 'sub-text', 'idle-active', 'frame-drop-count', 'container-fps', 'estimated-vf-fps',
   'audio-codec-name', 'video-codec', 'hwdec-current', 'mpv-version', 'demuxer-cache-duration', 'video-params/gamma'];
 const LIB_DIRS = ['/lib/x86_64-linux-gnu', '/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/usr/lib', '/lib64', '/usr/local/lib', '/usr/lib/aarch64-linux-gnu'];
@@ -63,8 +63,10 @@ function version() { return ver; }
 function frameBase() { return (s && s.port && s.sock) ? 'http://127.0.0.1:' + s.port + '/' + s.token + '/f' : ''; }
 function info() { const ok = available(); return { available: ok, error: ok ? '' : whyNot(), lib: good || libs().join(' | '), version: ver, base: frameBase() }; }
 const DEBUG = !!process.env.NEBULA_MPV_DEBUG;          // the rigs' trace: what mpv said and what went to the page
-// a line saying the connection failed under the file (FFmpeg's http layer: "Will reconnect at …", "Stream ends prematurely …")
-const NET_ERR = /Will reconnect|Failed to reconnect|ends prematurely|Connection (reset|refused|timed out)|Network is unreachable|Broken pipe|Input\/output error/i;
+// a line saying the connection failed under the file (FFmpeg's http layer): a reconnect for anything but a plain close, or a
+// known length cut short. NOT "ends prematurely … should be 18446744073709551615" + "error=Input/output error": with no length
+// given, that is how every close-delimited stream ends, whole or not (seen 09-15) — and a retry after it may fail any way
+const NET_ERR = /Will reconnect at \d+ in \d+ second\(s\), error=(?!Input\/output error|I\/O error)|ends prematurely at \d+, should be (?!18446744073709551615\b)\d+/i;
 function emit(e) {
   if (DEBUG && e.type !== 'state') console.log('[mpv-host] emit ' + e.type + (e.reason ? ' ' + e.reason : '') + (e.error ? ' ' + e.error : ''));
   if (onEvent) { try { onEvent(e); } catch (x) {} }
@@ -199,7 +201,9 @@ function options() {
     'audio-client-name': 'Nebula', sid: 'no', 'hr-seek': 'yes',
     // a dropped connection is picked up again inside FFmpeg for a moment (retries at 0 and 1 s); past that the page
     // reconnects from where it was (mpvState), and a dead address fails fast enough for the built-in engine to try it
-    'stream-lavf-o': 'reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_delay_max=2',
+    // (not reconnect_streamed: a stream that cannot seek would be fetched again from its first byte — a no-length TS then plays
+    // again at its end, a drop splices the start in; mpv's own default. The page reconnects a live one at its edge, 09-15)
+    'stream-lavf-o': 'reconnect=1,reconnect_on_network_error=1,reconnect_delay_max=2',
     // the software renderer's scaling is most of a frame's cost: bicubic + ordered dither draws 4K HEVC at 1080p in 42 ms on
     // an i3-3217U where mpv's default lanczos + random dither took 53 (09-15); the page draws smaller when even that is too slow
     'zimg-scaler': 'bicubic', 'zimg-dither': 'ordered',
@@ -279,6 +283,7 @@ function event(ss, m) {
     if (ss.expect === 'next') ss.expect = ss.cur;
     if (!ours(ss)) return;                              // a file an earlier load asked for, already replaced
     ss.recent = []; ss.neterr = null; ss.busy = true; emit({ type: 'start' });
+    if (ss.oldSubs && ss.oldSubs.length) { ss.oldSubs.forEach((f) => fs.unlink(f, () => {})); ss.oldSubs = []; }   // mpv has let them go
   } else if (m.event === 'file-loaded') {
     if (!ours(ss)) return;
     ss.loaded = true; emit({ type: 'loaded', tracks: ss.props['track-list'] || [], version: ver });
@@ -314,7 +319,7 @@ function snapshot() {
     acodec: P['audio-codec-name'] || null, vcodec: P['video-codec'] || null, ach: num('audio-params/channel-count'), gamma: P['video-params/gamma'] || null,
     prim: P['video-params/primaries'] || null,
     hw: P['hwdec-current'] || null, live: !(dur > 0) && P['demuxer-via-network'] === true,
-    neterr: s && typeof s.neterr === 'number' ? Math.round(s.neterr * 10) / 10 : null, p };
+    neterr: s && typeof s.neterr === 'number' ? Math.round(s.neterr * 10) / 10 : null, seekable: flag('seekable'), fsize: num('file-size'), p };
 }
 /** A film is on and moving (the display is kept awake for it). */
 function playing() { return !!(s && s.loaded && s.props.pause === false && s.props['idle-active'] !== true); }
@@ -350,11 +355,11 @@ function clean(o) {
   return { start: num(o.start, 0, 1e7, 0), ua: line(o.ua, 512) || 'Nebula', headers, alang: langs(o.alang), slang: langs(o.slang),
     aheadSecs: num(o.aheadSecs, 0, 3600, 0), maxBytes: Math.round(num(o.maxBytes, 16, 2048, 150)),
     aid: typeof o.aid === 'string' && /^\d{1,3}$/.test(o.aid) ? o.aid : 'auto', speed: String(num(o.speed, 0.25, 4, 1)),
-    volume: Math.round(num(o.volume, 0, 130, 100)), mute: o.mute === true, pause: o.pause === true };
+    volume: Math.round(num(o.volume, 0, 130, 100)), mute: o.mute === true, pause: o.pause === true, again: o.again === true };
 }
 /** Play `url` (http(s), or 'local:<id>' from grant()): o = { start, headers, ua, alang, slang, aheadSecs, maxBytes, aid, speed,
-    volume, mute, pause }. A new file starts on its own terms — the preferred language's track, 1×, playing — unless o carries
-    the last file's (a reconnect: its track, its speed, a pause the viewer asked for). */
+    volume, mute, pause, again }. A new file starts on its own terms — the preferred language's track, 1×, playing — unless o
+    carries the last file's (a reconnect, again: true — its track, its speed, a pause the viewer asked for, its subtitle files). */
 function load(url, o) {
   clearTimeout(reapT);
   const my = ++loadSeq, file = target(url), opts = clean(o && typeof o === 'object' ? o : {});
@@ -365,6 +370,8 @@ function load(url, o) {
     if (!s || !s.sock) return emit({ type: 'end', reason: 'error', error: 'the player stopped', detail: '', loaded: false });
     const ss = s;
     ss.busy = true; ss.expect = null; ss.cur = null; ss.waiting = true; ss.queue = []; ss.neterr = null;
+    // another film: the last one's subtitle files go once mpv has let them go (at this file's start); a reconnect keeps them
+    if (!opts.again) { ss.oldSubs = (ss.oldSubs || []).concat(ss.subFiles); ss.subFiles = []; }
     fire(['set', 'start', opts.start > 0 ? String(opts.start) : 'none']);
     fire(['set', 'user-agent', opts.ua]);
     fire(['change-list', 'http-header-fields', 'clr', '']);
@@ -423,11 +430,14 @@ async function subAdd(text, label, lang) {
   if (!ss || !ss.sock || !ss.dir || t.length > 8e6) return null;
   const lab = String(label || '').replace(/[\r\n\0]/g, ' ').slice(0, 100), lg = /^[A-Za-z-]{0,12}$/.test(String(lang || '')) ? String(lang || '') : '';
   const ext = /^\s*WEBVTT/.test(t) ? '.vtt' : (/^\s*\[Script Info\]/i.test(t) ? '.ass' : '.srt');
-  const file = path.join(ss.dir, 'sub-' + (ss.subFiles.length + 1) + ext);
-  try { fs.writeFileSync(file, t); ss.subFiles.push(file); } catch (e) { return null; }
+  // one file per text: a reconnect adding this film's subtitles again writes nothing new
+  const file = path.join(ss.dir, 'sub-' + crypto.createHash('sha1').update(t).digest('hex').slice(0, 16) + ext);
+  const known = (ss.props['track-list'] || []).filter((x) => x.type === 'sub' && x['external-filename'] === file).map((x) => x.id);
+  ss.oldSubs = (ss.oldSubs || []).filter((f) => f !== file);
+  if (!ss.subFiles.includes(file)) { try { fs.writeFileSync(file, t); ss.subFiles.push(file); } catch (e) { return null; } }
   try { await send(ss, ['sub-add', file, 'auto', lab, lg]); } catch (e) { return null; }
   for (let i = 0; i < 40; i++) {                        // the new track reaches the track list a moment later
-    const tr = (ss.props['track-list'] || []).filter((x) => x.type === 'sub' && x['external-filename'] === file)[0];
+    const tr = (ss.props['track-list'] || []).filter((x) => x.type === 'sub' && x['external-filename'] === file && !known.includes(x.id)).pop();
     if (tr) return { id: tr.id, lang: tr.lang || lg, title: tr.title || lab };
     await new Promise((r) => setTimeout(r, 50));
   }
