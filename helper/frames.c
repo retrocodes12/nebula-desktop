@@ -88,12 +88,14 @@ static int spawn(void (*fn)(void *), void *arg) {
 
 #define NSLOTS 4                                       /* MAXCONN being sent + the newest + one to draw into */
 #define MAXCONN 2
+#define MAXTHREADS 64                                  /* serving threads alive at once, the let-go ones included */
 static slot_t slots[NSLOTS];
 static int newest = -1;
 /* the connections (at most MAXCONN); one that has not shown the token yet is the one that gives its place to a newcomer */
 typedef struct { sock_t s; unsigned gen; int on, authed; uint64_t since; } conn_t;
 static conn_t tab[MAXCONN];
 static unsigned conn_gen;
+static int threads;
 typedef struct { sock_t s; int k; unsigned gen; } carg_t;
 static uint32_t cap_w, cap_h, want_w = 640, want_h = 360;
 static int want_pad = 1;
@@ -200,6 +202,7 @@ static void serve(void *arg) {
 done:
   lock(); if (tab[a.k].gen == a.gen) tab[a.k].on = 0; unlock();   /* its place first: a closed socket is never shut down */
   close_sock(c);
+  lock(); threads--; unlock();
 }
 
 static void accept_loop(void *arg) {
@@ -224,6 +227,9 @@ static void accept_loop(void *arg) {
     setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, (const char *)&to, sizeof to);
     setsockopt(c, SOL_SOCKET, SO_SNDTIMEO, (const char *)&to, sizeof to);
     lock();
+    /* a let-go connection's thread may sit in its read until the 5 s timeout (Winsock need not wake it): a flood of them is
+       refused here rather than piling threads up */
+    if (threads >= MAXTHREADS) { unlock(); close_sock(c); nap(); continue; }
     int k = -1;
     for (int i = 0; i < MAXCONN && k < 0; i++) if (!tab[i].on) k = i;
     /* full: the longest-waiting connection that has not shown the token gives its place up — the page shows it in its first
@@ -233,14 +239,14 @@ static void accept_loop(void *arg) {
       if (k >= 0) shutdown(tab[k].s, SHUT_BOTH);
     }
     unsigned g = 0;
-    if (k >= 0) { g = ++conn_gen; tab[k].s = c; tab[k].gen = g; tab[k].on = 1; tab[k].authed = 0; tab[k].since = now_ms(); }
+    if (k >= 0) { g = ++conn_gen; tab[k].s = c; tab[k].gen = g; tab[k].on = 1; tab[k].authed = 0; tab[k].since = now_ms(); threads++; }
     unlock();
     carg_t *ca = k >= 0 ? malloc(sizeof *ca) : NULL;
     if (ca) { ca->s = c; ca->k = k; ca->gen = g; }
     if (!ca || !spawn(serve, ca)) {
       free(ca);
       close_sock(c);
-      if (k >= 0) { lock(); if (tab[k].gen == g) tab[k].on = 0; unlock(); }
+      if (k >= 0) { lock(); if (tab[k].gen == g) tab[k].on = 0; threads--; unlock(); }
     }
   }
 }

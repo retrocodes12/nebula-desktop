@@ -13,7 +13,7 @@ const MAX_W = 1920, MAX_H = 1080, WIN = process.platform === 'win32';
 const OBSERVE = ['time-pos', 'duration', 'pause', 'paused-for-cache', 'seeking', 'eof-reached', 'idle-active', 'volume', 'mute', 'speed',
   'demuxer-cache-duration', 'dwidth', 'dheight', 'frame-drop-count', 'estimated-vf-fps', 'container-fps', 'video-bitrate', 'audio-bitrate',
   'aid', 'sid', 'audio-codec-name', 'video-codec', 'audio-params/channel-count', 'demuxer-via-network', 'track-list', 'sub-text', 'mpv-version',
-  'hwdec-current', 'video-params/gamma', 'video-params/primaries', 'seekable', 'file-size'];
+  'hwdec-current', 'video-params/gamma', 'video-params/primaries', 'seekable', 'file-size', 'demuxer-cache-idle'];
 const GETTABLE = ['aid', 'sid', 'speed', 'volume', 'mute', 'pause', 'sub-text', 'idle-active', 'frame-drop-count', 'container-fps', 'estimated-vf-fps',
   'audio-codec-name', 'video-codec', 'hwdec-current', 'mpv-version', 'demuxer-cache-duration', 'video-params/gamma'];
 const LIB_DIRS = ['/lib/x86_64-linux-gnu', '/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/usr/lib', '/lib64', '/usr/local/lib', '/usr/lib/aarch64-linux-gnu'];
@@ -254,16 +254,25 @@ function onData(ss, chunk) {
     if (m.event) event(ss, m);
   }
 }
-/** How far the download has got (film seconds: the clock plus what is buffered ahead) and when that last moved. Waiting for
-    more (buffering) with nothing arriving for 3 s is a host that stopped sending: where the download stood is then a lost
-    connection, however the stream closes after (snapshot().neterr) — a whole file never makes mpv wait after its last
-    bytes, and more than a second's worth arriving again clears it. */
+/** How far the download has got (film seconds: the clock plus what is buffered ahead) and when that last moved. mpv's reader
+    waiting on the network (demuxer-cache-idle: no) or mpv waiting for more (buffering) with nothing arriving for 3 s is a
+    host that stopped sending: where the download stood is then a lost connection, however the stream closes after
+    (snapshot().neterr) — with a full buffer too (the reader sits in a read the host never answers until the network
+    timeout). A reader that stops just after bytes came is a whole file's end (or a full buffer): that clears it, as does
+    more than a second's worth arriving (the last frames playing out at the end are not). */
 function starveCheck(ss) {
   const P = ss.props, t = P['time-pos'];
   if (typeof t !== 'number') return;
   const head = t + (typeof P['demuxer-cache-duration'] === 'number' ? P['demuxer-cache-duration'] : 0), now = Date.now();
-  if (head > ss.headEnd + 0.05) { if (ss.starve != null && head > ss.starve + 1) ss.starve = null; ss.headEnd = head; ss.headAt = now; }   // (bytes again: more than the last frames playing out)
-  else if (P['paused-for-cache'] === true && ss.headAt && now - ss.headAt >= 3000 && ss.starve == null) ss.starve = ss.headEnd;
+  const idle = P['demuxer-cache-idle'] === true;
+  // (moving = half a second's film more: the last frames playing out at the end nudge the clock past what was counted — not bytes)
+  if (head > ss.headEnd + 0.5) { if (ss.starve != null && head > ss.starve + 1) ss.starve = null; ss.headEnd = head; ss.headAt = now; }
+  if (idle !== ss.idle) {                               // the reader started (a fresh 3 s from now) or stopped
+    if (!idle) ss.headAt = now;
+    else if (now - ss.headAt < 3000) ss.starve = null;
+    else if (ss.starve == null && ss.headAt && ss.headEnd >= 0) ss.starve = ss.headEnd;
+    ss.idle = idle;
+  } else if ((P['paused-for-cache'] === true || !idle) && ss.headAt && now - ss.headAt >= 3000 && ss.starve == null && ss.headEnd >= 0) ss.starve = ss.headEnd;
 }
 /** This load's file is the one mpv is on: its entry id answered loadfile ('any' for an mpv that does not number them). */
 function ours(ss) { return ss.expect != null && ss.expect !== 'next' && (ss.cur === ss.expect || ss.cur === 'any'); }
@@ -294,7 +303,7 @@ function event(ss, m) {
     ss.cur = m.playlist_entry_id != null ? m.playlist_entry_id : 'any';
     if (ss.expect === 'next') ss.expect = ss.cur;
     if (!ours(ss)) return;                              // a file an earlier load asked for, already replaced
-    ss.recent = []; ss.neterr = null; ss.headEnd = -1; ss.headAt = 0; ss.starve = null; ss.busy = true; emit({ type: 'start' });
+    ss.recent = []; ss.neterr = null; ss.headEnd = -1; ss.headAt = 0; ss.starve = null; ss.idle = undefined; ss.busy = true; emit({ type: 'start' });
     if (ss.oldSubs && ss.oldSubs.length) { ss.oldSubs.forEach((f) => fs.unlink(f, () => {})); ss.oldSubs = []; }   // mpv has let them go
   } else if (m.event === 'file-loaded') {
     if (!ours(ss)) return;
