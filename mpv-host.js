@@ -13,7 +13,10 @@ const MAX_W = 1920, MAX_H = 1080, WIN = process.platform === 'win32';
 const OBSERVE = ['time-pos', 'duration', 'pause', 'paused-for-cache', 'seeking', 'eof-reached', 'idle-active', 'volume', 'mute', 'speed',
   'demuxer-cache-duration', 'dwidth', 'dheight', 'frame-drop-count', 'estimated-vf-fps', 'container-fps', 'video-bitrate', 'audio-bitrate',
   'aid', 'sid', 'audio-codec-name', 'video-codec', 'audio-params/channel-count', 'demuxer-via-network', 'track-list', 'sub-text', 'mpv-version',
-  'hwdec-current', 'video-params/gamma', 'video-params/primaries', 'seekable', 'file-size', 'demuxer-cache-idle'];
+  'hwdec-current', 'video-params/gamma', 'video-params/primaries', 'seekable', 'file-size', 'demuxer-cache-idle', 'demuxer-cache-time'];
+// a read the host never answers ends at mpv's network-timeout (10 s, the options below): this long without anything new
+// while mpv's reader waits on the network is a stall about to end so — and anything that ends sooner was a close
+const STALL_MS = 9000;
 const GETTABLE = ['aid', 'sid', 'speed', 'volume', 'mute', 'pause', 'sub-text', 'idle-active', 'frame-drop-count', 'container-fps', 'estimated-vf-fps',
   'audio-codec-name', 'video-codec', 'hwdec-current', 'mpv-version', 'demuxer-cache-duration', 'video-params/gamma'];
 const LIB_DIRS = ['/lib/x86_64-linux-gnu', '/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/usr/lib', '/lib64', '/usr/local/lib', '/usr/lib/aarch64-linux-gnu'];
@@ -254,25 +257,25 @@ function onData(ss, chunk) {
     if (m.event) event(ss, m);
   }
 }
-/** How far the download has got (film seconds: the clock plus what is buffered ahead) and when that last moved. mpv's reader
-    waiting on the network (demuxer-cache-idle: no) or mpv waiting for more (buffering) with nothing arriving for 3 s is a
-    host that stopped sending: where the download stood is then a lost connection, however the stream closes after
-    (snapshot().neterr) — with a full buffer too (the reader sits in a read the host never answers until the network
-    timeout). A reader that stops just after bytes came is a whole file's end (or a full buffer): that clears it, as does
-    more than a second's worth arriving (the last frames playing out at the end are not). */
+/** A stalled download (a host that stopped sending, the connection left open): mpv's reader waiting on the network
+    (demuxer-cache-idle: no) while nothing new is demuxed (demuxer-cache-time — the last packet read in, which the playhead
+    cannot move) for STALL_MS marks where the play's download stood (snapshot().neterr, in the play's own clock); that read
+    then ends in mpv's network timeout, which mpv takes for an end of file. A stream that closes before that — at once, or a
+    host that holds its close a few seconds — has ended. Half a second's film read in again clears it. */
 function starveCheck(ss) {
-  const P = ss.props, t = P['time-pos'];
-  if (typeof t !== 'number') return;
-  const head = t + (typeof P['demuxer-cache-duration'] === 'number' ? P['demuxer-cache-duration'] : 0), now = Date.now();
-  const idle = P['demuxer-cache-idle'] === true;
-  // (moving = half a second's film more: the last frames playing out at the end nudge the clock past what was counted — not bytes)
-  if (head > ss.headEnd + 0.5) { if (ss.starve != null && head > ss.starve + 1) ss.starve = null; ss.headEnd = head; ss.headAt = now; }
-  if (idle !== ss.idle) {                               // the reader started (a fresh 3 s from now) or stopped
-    if (!idle) ss.headAt = now;
-    else if (now - ss.headAt < 3000) ss.starve = null;
-    else if (ss.starve == null && ss.headAt && ss.headEnd >= 0) ss.starve = ss.headEnd;
-    ss.idle = idle;
-  } else if ((P['paused-for-cache'] === true || !idle) && ss.headAt && now - ss.headAt >= 3000 && ss.starve == null && ss.headEnd >= 0) ss.starve = ss.headEnd;
+  const P = ss.props, t = P['time-pos'], got = P['demuxer-cache-time'];
+  if (typeof t !== 'number' || typeof got !== 'number') return;
+  const now = Date.now(), idle = P['demuxer-cache-idle'] === true;
+  if (got > ss.headEnd + 0.01) {
+    ss.headEnd = got;
+    // (once marked, only half a second's film read in again clears it: at the end of file mpv counts the last packet — seen 09-15)
+    if (ss.starve == null) ss.headAt = now;
+    else if (!idle && got > ss.starveGot + 0.5) { ss.starve = null; ss.headAt = now; }
+  }
+  if (idle !== ss.idle) { if (!idle) ss.headAt = now; ss.idle = idle; }          // (a reader that starts reading gets its own wait)
+  else if (!idle && ss.headAt && now - ss.headAt >= STALL_MS && ss.starve == null) {
+    ss.starve = t + (typeof P['demuxer-cache-duration'] === 'number' ? P['demuxer-cache-duration'] : 0); ss.starveGot = ss.headEnd;
+  }
 }
 /** This load's file is the one mpv is on: its entry id answered loadfile ('any' for an mpv that does not number them). */
 function ours(ss) { return ss.expect != null && ss.expect !== 'next' && (ss.cur === ss.expect || ss.cur === 'any'); }
