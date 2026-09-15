@@ -193,10 +193,11 @@ function sweep() {
 }
 function options() {
   const o = { hwdec: 'auto-copy-safe', 'keep-open': 'yes', 'msg-level': 'all=warn', 'input-default-bindings': 'no', 'input-vo-keyboard': 'no', 'osd-level': '0',
-    config: 'no', 'load-scripts': 'no', osc: 'no', ytdl: 'no', 'sub-auto': 'no', 'audio-file-auto': 'no', cache: 'auto', 'network-timeout': '20',
+    config: 'no', 'load-scripts': 'no', osc: 'no', ytdl: 'no', 'sub-auto': 'no', 'audio-file-auto': 'no', cache: 'auto', 'network-timeout': '10',
     'audio-client-name': 'Nebula', sid: 'no', 'hr-seek': 'yes',
-    // a dropped connection is picked up again inside FFmpeg for up to 10 s (past that the page reconnects, mpvState)
-    'stream-lavf-o': 'reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_delay_max=10',
+    // a dropped connection is picked up again inside FFmpeg for a moment (retries at 0 and 1 s); past that the page
+    // reconnects from where it was (mpvState), and a dead address fails fast enough for the built-in engine to try it
+    'stream-lavf-o': 'reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_delay_max=2',
     // the software renderer's scaling is most of a frame's cost: bicubic + ordered dither draws 4K HEVC at 1080p in 42 ms on
     // an i3-3217U where mpv's default lanczos + random dither took 53 (09-15); the page draws smaller when even that is too slow
     'zimg-scaler': 'bicubic', 'zimg-dither': 'ordered',

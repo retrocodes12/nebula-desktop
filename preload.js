@@ -56,7 +56,7 @@ function mpvPicture() {
   let onEvent = null, base = info0.base || '', props = {}, tracks = [];
   let canvas = null, gl = null, gl2 = false, bw = 0, bh = 0, rw = 0, rh = 0, tw = 0, th = 0, vw = 0, vh = 0, uMode = null, mode = 0, modeSet = -1;
   let running = false, pumpId = 0, next = null, raf = 0, frames = 0, drawn = 0, upMs = 0, lastCount = 0, count0 = 0, lastGen = -1, staleGen = -1;
-  let scale = 1, drawEma = 0, slowAt = 0, quickAt = 0, lastDrop = 0, hist = [];
+  let scale = 1, drawEma = 0, slowAt = 0, quickAt = 0, lastDrop = 0, hist = [], drawGap = 0, lastDrawAt = 0;
   const emit = (m) => { if (onEvent) { try { onEvent(m); } catch (x) {} } };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -108,6 +108,9 @@ function mpvPicture() {
       const d = performance.now() - t0;
       upMs = upMs ? upMs * 0.9 + d * 0.1 : d;
       if (f.drawMs > 0 && f.w === rw && f.h === rh) drawEma = drawEma ? drawEma * 0.9 + f.drawMs * 0.1 : f.drawMs;
+      const now = performance.now();                    // how far apart frames reach the screen
+      if (lastDrawAt) drawGap = drawGap ? drawGap * 0.9 + (now - lastDrawAt) * 0.1 : now - lastDrawAt;
+      lastDrawAt = now;
     }
   }
   /** Frames are asked for as fast as the helper draws them (each request is answered with the next one) and the newest is
@@ -144,8 +147,11 @@ function mpvPicture() {
     lastDrop = s.drop || 0;
     hist.push({ f: frames, d: drawn });                  // the last two seconds (a state comes four times a second)
     if (hist.length > 9) hist.shift();
-    const dd = drawn - hist[0].d, df = frames - hist[0].f, pageSlow = hist.length >= 8 && dd >= 12 && df < dd * 0.85, pageOk = dd < 12 || df >= dd * 0.97;
-    if (s.pause !== false || s.cache || document.hidden) { slowAt = quickAt = 0; return; }
+    // page skips mean slowness only when frames also reach the screen well apart (a 60 fps film on a 60 Hz screen skips a
+    // frame now and then around the refresh without anything being slow)
+    const dd = drawn - hist[0].d, df = frames - hist[0].f, pageOk = dd < 12 || df >= dd * 0.97;
+    const pageSlow = hist.length >= 8 && dd >= 12 && df < dd * 0.85 && drawGap > slot * 1.4;
+    if (s.pause !== false || s.cache || document.hidden) { slowAt = quickAt = 0; lastDrawAt = 0; return; }
     const drawSlow = drawEma > 0 && (drawEma > slot * 0.75 || (dropped && drawEma > slot * 0.5));
     if (drawSlow || pageSlow) {
       quickAt = 0;
@@ -192,7 +198,8 @@ function mpvPicture() {
     load(url, o) {
       if (typeof url !== 'string' || !(/^https?:\/\//i.test(url) || /^local:\d+$/.test(url))) return { ok: false, error: 'this address cannot be played here' };
       ipcRenderer.send('mpv-load', url, o && typeof o === 'object' ? o : {});
-      running = true; frames = 0; drawn = 0; count0 = lastCount; scale = 1; drawEma = 0; slowAt = quickAt = 0; lastDrop = 0; hist = []; vw = vh = 0; staleGen = lastGen; next = null;
+      running = true; frames = 0; drawn = 0; count0 = lastCount; scale = 1; drawEma = 0; slowAt = quickAt = 0; lastDrop = 0; hist = []; drawGap = 0; lastDrawAt = 0;
+      vw = vh = 0; staleGen = lastGen; next = null;
       pump(++pumpId);
       return { ok: true };
     },
