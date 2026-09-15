@@ -344,7 +344,8 @@ function snapshot() {
     acodec: P['audio-codec-name'] || null, vcodec: P['video-codec'] || null, ach: num('audio-params/channel-count'), gamma: P['video-params/gamma'] || null,
     prim: P['video-params/primaries'] || null,
     hw: P['hwdec-current'] || null, live: !(dur > 0) && P['demuxer-via-network'] === true,
-    neterr: s && typeof (s.neterr != null ? s.neterr : s.starve) === 'number' ? Math.round((s.neterr != null ? s.neterr : s.starve) * 10) / 10 : null, seekable: flag('seekable'), fsize: num('file-size'), p };
+    neterr: s && typeof (s.neterr != null ? s.neterr : s.starve) === 'number' ? Math.round((s.neterr != null ? s.neterr : s.starve) * 10) / 10 : null, seekable: flag('seekable'), fsize: num('file-size'),
+    ridle: flag('demuxer-cache-idle'), got: num('demuxer-cache-time'), p };   // (ridle: mpv's reader has stopped; got: the last packet it read in)
 }
 /** A film is on and moving (the display is kept awake for it). */
 function playing() { return !!(s && s.loaded && s.props.pause === false && s.props['idle-active'] !== true); }
