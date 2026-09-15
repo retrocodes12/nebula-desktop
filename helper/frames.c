@@ -20,6 +20,7 @@
 typedef SOCKET sock_t;
 #define BAD_SOCK INVALID_SOCKET
 #define SEND_FLAGS 0
+#define SHUT_BOTH SD_BOTH
 static CRITICAL_SECTION mu;
 static CONDITION_VARIABLE cv;
 static void lock(void) { EnterCriticalSection(&mu); }
@@ -55,6 +56,7 @@ static int spawn(void (*fn)(void *), void *arg) {
 typedef int sock_t;
 #define BAD_SOCK (-1)
 #define SEND_FLAGS MSG_NOSIGNAL
+#define SHUT_BOTH SHUT_RDWR
 static pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t cv;
 static void lock(void) { pthread_mutex_lock(&mu); }
@@ -87,7 +89,12 @@ static int spawn(void (*fn)(void *), void *arg) {
 #define NSLOTS 4                                       /* MAXCONN being sent + the newest + one to draw into */
 #define MAXCONN 2
 static slot_t slots[NSLOTS];
-static int newest = -1, conns = 0;
+static int newest = -1;
+/* the connections (at most MAXCONN); one that has not shown the token yet is the one that gives its place to a newcomer */
+typedef struct { sock_t s; unsigned gen; int on, authed; uint64_t since; } conn_t;
+static conn_t tab[MAXCONN];
+static unsigned conn_gen;
+typedef struct { sock_t s; int k; unsigned gen; } carg_t;
 static uint32_t cap_w, cap_h, want_w = 640, want_h = 360;
 static int want_pad = 1;
 static uint64_t last_req;                              /* when the page last asked (ms); 0 = never */
@@ -133,7 +140,10 @@ static void reply(sock_t c, const char *status) {
 }
 
 static void serve(void *arg) {
-  sock_t c = (sock_t)(uintptr_t)arg;
+  carg_t a = *(carg_t *)arg;
+  free(arg);
+  sock_t c = a.s;
+  int authed = 0;
   char buf[4096];
   size_t n = 0;
   for (;;) {
@@ -152,6 +162,7 @@ static void serve(void *arg) {
     *sp2 = 0;
     const char *target = sp1 + 1;
     if (strlen(target) < pre_len || !same(target, pre, pre_len) || (target[pre_len] && target[pre_len] != '?')) { reply(c, "404 Not Found"); goto done; }
+    if (!authed) { authed = 1; lock(); if (tab[a.k].gen == a.gen) tab[a.k].authed = 1; unlock(); }
     const char *q = target[pre_len] == '?' ? target + pre_len + 1 : "";
     uint64_t after = 0, v = 0;
     if (qget(q, "after", &v)) after = v;
@@ -187,8 +198,8 @@ static void serve(void *arg) {
     n -= used;
   }
 done:
+  lock(); if (tab[a.k].gen == a.gen) tab[a.k].on = 0; unlock();   /* its place first: a closed socket is never shut down */
   close_sock(c);
-  lock(); conns--; unlock();
 }
 
 static void accept_loop(void *arg) {
@@ -213,11 +224,24 @@ static void accept_loop(void *arg) {
     setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, (const char *)&to, sizeof to);
     setsockopt(c, SOL_SOCKET, SO_SNDTIMEO, (const char *)&to, sizeof to);
     lock();
-    int room = conns < MAXCONN;
-    if (room) conns++;
+    int k = -1;
+    for (int i = 0; i < MAXCONN && k < 0; i++) if (!tab[i].on) k = i;
+    /* full: the longest-waiting connection that has not shown the token gives its place up — the page shows it in its first
+       request, so a stranger holding the places open can never keep the page out */
+    if (k < 0) {
+      for (int i = 0; i < MAXCONN; i++) if (!tab[i].authed && (k < 0 || tab[i].since < tab[k].since)) k = i;
+      if (k >= 0) shutdown(tab[k].s, SHUT_BOTH);
+    }
+    unsigned g = 0;
+    if (k >= 0) { g = ++conn_gen; tab[k].s = c; tab[k].gen = g; tab[k].on = 1; tab[k].authed = 0; tab[k].since = now_ms(); }
     unlock();
-    if (!room) { close_sock(c); continue; }
-    if (!spawn(serve, (void *)(uintptr_t)c)) { close_sock(c); lock(); conns--; unlock(); }
+    carg_t *ca = k >= 0 ? malloc(sizeof *ca) : NULL;
+    if (ca) { ca->s = c; ca->k = k; ca->gen = g; }
+    if (!ca || !spawn(serve, ca)) {
+      free(ca);
+      close_sock(c);
+      if (k >= 0) { lock(); if (tab[k].gen == g) tab[k].on = 0; unlock(); }
+    }
   }
 }
 

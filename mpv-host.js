@@ -133,7 +133,7 @@ function start() {
     if (!helperFile() || !list.length) return give(whyNot(), true);
     sweep();
     ss = { p: null, dir: '', ipc: '', port: 0, token: crypto.randomBytes(16).toString('hex'), sock: null, rbuf: '', pending: new Map(), props: {},
-      recent: [], subFiles: [], loaded: false, busy: false, ready: false, gone: false, dropped: false, quitting: false, expect: null, cur: null,
+      recent: [], subFiles: [], headEnd: -1, headAt: 0, starve: null, loaded: false, busy: false, ready: false, gone: false, dropped: false, quitting: false, expect: null, cur: null,
       waiting: false, queue: [] };
     try {
       ss.dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nebula-mpv-' + process.pid + '-'));   // 0700: the socket and subtitle files are this user's
@@ -254,6 +254,17 @@ function onData(ss, chunk) {
     if (m.event) event(ss, m);
   }
 }
+/** How far the download has got (film seconds: the clock plus what is buffered ahead) and when that last moved. Waiting for
+    more (buffering) with nothing arriving for 3 s is a host that stopped sending: where the download stood is then a lost
+    connection, however the stream closes after (snapshot().neterr) — a whole file never makes mpv wait after its last
+    bytes, and more than a second's worth arriving again clears it. */
+function starveCheck(ss) {
+  const P = ss.props, t = P['time-pos'];
+  if (typeof t !== 'number') return;
+  const head = t + (typeof P['demuxer-cache-duration'] === 'number' ? P['demuxer-cache-duration'] : 0), now = Date.now();
+  if (head > ss.headEnd + 0.05) { if (ss.starve != null && head > ss.starve + 1) ss.starve = null; ss.headEnd = head; ss.headAt = now; }   // (bytes again: more than the last frames playing out)
+  else if (P['paused-for-cache'] === true && ss.headAt && now - ss.headAt >= 3000 && ss.starve == null) ss.starve = ss.headEnd;
+}
 /** This load's file is the one mpv is on: its entry id answered loadfile ('any' for an mpv that does not number them). */
 function ours(ss) { return ss.expect != null && ss.expect !== 'next' && (ss.cur === ss.expect || ss.cur === 'any'); }
 function event(ss, m) {
@@ -271,6 +282,7 @@ function event(ss, m) {
     // film's end — even where mpv's length is only its estimate of what it has read (snapshot().neterr)
     const P = ss.props;
     if (NET_ERR.test(t) && typeof P['time-pos'] === 'number') ss.neterr = P['time-pos'] + (typeof P['demuxer-cache-duration'] === 'number' ? P['demuxer-cache-duration'] : 0);
+    if (ss === s && /Cannot seek/i.test(t)) emit({ type: 'seekfail' });   // (mpv refused a seek: no restart will come for it)
     return;
   }
   if (DEBUG) console.log('[mpv-host] mpv ' + m.event + ' entry ' + m.playlist_entry_id + ' expect ' + ss.expect + ' cur ' + ss.cur + (ss === s ? '' : ' (an old helper)'));
@@ -282,7 +294,7 @@ function event(ss, m) {
     ss.cur = m.playlist_entry_id != null ? m.playlist_entry_id : 'any';
     if (ss.expect === 'next') ss.expect = ss.cur;
     if (!ours(ss)) return;                              // a file an earlier load asked for, already replaced
-    ss.recent = []; ss.neterr = null; ss.busy = true; emit({ type: 'start' });
+    ss.recent = []; ss.neterr = null; ss.headEnd = -1; ss.headAt = 0; ss.starve = null; ss.busy = true; emit({ type: 'start' });
     if (ss.oldSubs && ss.oldSubs.length) { ss.oldSubs.forEach((f) => fs.unlink(f, () => {})); ss.oldSubs = []; }   // mpv has let them go
   } else if (m.event === 'file-loaded') {
     if (!ours(ss)) return;
@@ -295,7 +307,7 @@ function event(ss, m) {
     const detail = ss.recent.filter((t) => /HTTP error \d{3}|\b[45]\d\d\b/.test(t)).pop() || ss.recent[ss.recent.length - 1] || '';
     emit({ type: 'end', reason: m.reason || 'stop', error: m.file_error || '', detail, loaded: was });
   } else if (!ours(ss)) return;
-  else if (m.event === 'seek') emit({ type: 'seek' });
+  else if (m.event === 'seek') { ss.headEnd = -1; ss.headAt = Date.now(); ss.starve = null; emit({ type: 'seek' }); }   // (the download starts again from there)
   else if (m.event === 'playback-restart') emit({ type: 'restart' });
   else if (m.event === 'video-reconfig') emit({ type: 'video', w: ss.props.dwidth || 0, h: ss.props.dheight || 0 });
 }
@@ -310,6 +322,7 @@ function get(k) {
   return typeof v === 'object' ? JSON.stringify(v) : String(v);
 }
 function snapshot() {
+  if (s) starveCheck(s);
   const P = s ? s.props : {}, num = (k) => (typeof P[k] === 'number' ? P[k] : null), flag = (k) => (typeof P[k] === 'boolean' ? P[k] : null);
   const dur = num('duration'), p = {};
   GETTABLE.forEach((k) => { p[k] = get(k); });
@@ -319,7 +332,7 @@ function snapshot() {
     acodec: P['audio-codec-name'] || null, vcodec: P['video-codec'] || null, ach: num('audio-params/channel-count'), gamma: P['video-params/gamma'] || null,
     prim: P['video-params/primaries'] || null,
     hw: P['hwdec-current'] || null, live: !(dur > 0) && P['demuxer-via-network'] === true,
-    neterr: s && typeof s.neterr === 'number' ? Math.round(s.neterr * 10) / 10 : null, seekable: flag('seekable'), fsize: num('file-size'), p };
+    neterr: s && typeof (s.neterr != null ? s.neterr : s.starve) === 'number' ? Math.round((s.neterr != null ? s.neterr : s.starve) * 10) / 10 : null, seekable: flag('seekable'), fsize: num('file-size'), p };
 }
 /** A film is on and moving (the display is kept awake for it). */
 function playing() { return !!(s && s.loaded && s.props.pause === false && s.props['idle-active'] !== true); }
@@ -433,6 +446,10 @@ async function subAdd(text, label, lang) {
   // one file per text: a reconnect adding this film's subtitles again writes nothing new
   const file = path.join(ss.dir, 'sub-' + crypto.createHash('sha1').update(t).digest('hex').slice(0, 16) + ext);
   const known = (ss.props['track-list'] || []).filter((x) => x.type === 'sub' && x['external-filename'] === file).map((x) => x.id);
+  if (known.length) {                                   // this text is already a track of this file: that one, not a second copy
+    const tr = (ss.props['track-list'] || []).filter((x) => x.type === 'sub' && x.id === Math.max(...known))[0];
+    if (tr) return { id: tr.id, lang: tr.lang || lg, title: tr.title || lab };
+  }
   ss.oldSubs = (ss.oldSubs || []).filter((f) => f !== file);
   if (!ss.subFiles.includes(file)) { try { fs.writeFileSync(file, t); ss.subFiles.push(file); } catch (e) { return null; } }
   try { await send(ss, ['sub-add', file, 'auto', lab, lg]); } catch (e) { return null; }
