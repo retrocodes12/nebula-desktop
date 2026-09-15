@@ -63,6 +63,8 @@ function version() { return ver; }
 function frameBase() { return (s && s.port && s.sock) ? 'http://127.0.0.1:' + s.port + '/' + s.token + '/f' : ''; }
 function info() { const ok = available(); return { available: ok, error: ok ? '' : whyNot(), lib: good || libs().join(' | '), version: ver, base: frameBase() }; }
 const DEBUG = !!process.env.NEBULA_MPV_DEBUG;          // the rigs' trace: what mpv said and what went to the page
+// a line saying the connection failed under the file (FFmpeg's http layer: "Will reconnect at …", "Stream ends prematurely …")
+const NET_ERR = /Will reconnect|Failed to reconnect|ends prematurely|Connection (reset|refused|timed out)|Network is unreachable|Broken pipe|Input\/output error/i;
 function emit(e) {
   if (DEBUG && e.type !== 'state') console.log('[mpv-host] emit ' + e.type + (e.reason ? ' ' + e.reason : '') + (e.error ? ' ' + e.error : ''));
   if (onEvent) { try { onEvent(e); } catch (x) {} }
@@ -257,7 +259,16 @@ function event(ss, m) {
     if (ss === s && m.name === 'track-list' && ss.loaded) emit({ type: 'tracks', tracks: m.data || [] });
     return;
   }
-  if (m.event === 'log-message') { const t = String(m.text || '').trim(); if (t) { ss.recent.push(t); if (ss.recent.length > 6) ss.recent.shift(); } return; }
+  if (m.event === 'log-message') {
+    const t = String(m.text || '').trim();
+    if (DEBUG && t) console.log('[mpv-host] log ' + (m.prefix || '') + ': ' + t);
+    if (t) { ss.recent.push(t); if (ss.recent.length > 6) ss.recent.shift(); }
+    // where the download stood when the connection failed (film seconds): an end of file there is a lost connection, not the
+    // film's end — even where mpv's length is only its estimate of what it has read (snapshot().neterr)
+    const P = ss.props;
+    if (NET_ERR.test(t) && typeof P['time-pos'] === 'number') ss.neterr = P['time-pos'] + (typeof P['demuxer-cache-duration'] === 'number' ? P['demuxer-cache-duration'] : 0);
+    return;
+  }
   if (DEBUG) console.log('[mpv-host] mpv ' + m.event + ' entry ' + m.playlist_entry_id + ' expect ' + ss.expect + ' cur ' + ss.cur + (ss === s ? '' : ' (an old helper)'));
   if (ss !== s) return;                                 // a helper on its way out says nothing more to the page
   // loadfile's answer names the new file's entry, and a fresh mpv can send the file's first events before it (seen 09-15):
@@ -267,7 +278,7 @@ function event(ss, m) {
     ss.cur = m.playlist_entry_id != null ? m.playlist_entry_id : 'any';
     if (ss.expect === 'next') ss.expect = ss.cur;
     if (!ours(ss)) return;                              // a file an earlier load asked for, already replaced
-    ss.recent = []; ss.busy = true; emit({ type: 'start' });
+    ss.recent = []; ss.neterr = null; ss.busy = true; emit({ type: 'start' });
   } else if (m.event === 'file-loaded') {
     if (!ours(ss)) return;
     ss.loaded = true; emit({ type: 'loaded', tracks: ss.props['track-list'] || [], version: ver });
@@ -302,7 +313,8 @@ function snapshot() {
     vfps: num('estimated-vf-fps'), fps: num('container-fps'), vbr: num('video-bitrate'), abr: num('audio-bitrate'), aid: get('aid'), sid: get('sid'),
     acodec: P['audio-codec-name'] || null, vcodec: P['video-codec'] || null, ach: num('audio-params/channel-count'), gamma: P['video-params/gamma'] || null,
     prim: P['video-params/primaries'] || null,
-    hw: P['hwdec-current'] || null, live: !(dur > 0) && P['demuxer-via-network'] === true, p };
+    hw: P['hwdec-current'] || null, live: !(dur > 0) && P['demuxer-via-network'] === true,
+    neterr: s && typeof s.neterr === 'number' ? Math.round(s.neterr * 10) / 10 : null, p };
 }
 /** A film is on and moving (the display is kept awake for it). */
 function playing() { return !!(s && s.loaded && s.props.pause === false && s.props['idle-active'] !== true); }
@@ -338,10 +350,11 @@ function clean(o) {
   return { start: num(o.start, 0, 1e7, 0), ua: line(o.ua, 512) || 'Nebula', headers, alang: langs(o.alang), slang: langs(o.slang),
     aheadSecs: num(o.aheadSecs, 0, 3600, 0), maxBytes: Math.round(num(o.maxBytes, 16, 2048, 150)),
     aid: typeof o.aid === 'string' && /^\d{1,3}$/.test(o.aid) ? o.aid : 'auto', speed: String(num(o.speed, 0.25, 4, 1)),
-    volume: Math.round(num(o.volume, 0, 130, 100)), mute: o.mute === true };
+    volume: Math.round(num(o.volume, 0, 130, 100)), mute: o.mute === true, pause: o.pause === true };
 }
-/** Play `url` (http(s), or 'local:<id>' from grant()): o = { start, headers, ua, alang, slang, aheadSecs, maxBytes, aid, speed }.
-    A new file starts on its own terms: the preferred language's track, 1×, unless o carries the last file's (a reconnect). */
+/** Play `url` (http(s), or 'local:<id>' from grant()): o = { start, headers, ua, alang, slang, aheadSecs, maxBytes, aid, speed,
+    volume, mute, pause }. A new file starts on its own terms — the preferred language's track, 1×, playing — unless o carries
+    the last file's (a reconnect: its track, its speed, a pause the viewer asked for). */
 function load(url, o) {
   clearTimeout(reapT);
   const my = ++loadSeq, file = target(url), opts = clean(o && typeof o === 'object' ? o : {});
@@ -351,13 +364,13 @@ function load(url, o) {
     if (my !== loadSeq) return;                         // stopped, or another file asked for, while the helper started
     if (!s || !s.sock) return emit({ type: 'end', reason: 'error', error: 'the player stopped', detail: '', loaded: false });
     const ss = s;
-    ss.busy = true; ss.expect = null; ss.cur = null; ss.waiting = true; ss.queue = [];
+    ss.busy = true; ss.expect = null; ss.cur = null; ss.waiting = true; ss.queue = []; ss.neterr = null;
     fire(['set', 'start', opts.start > 0 ? String(opts.start) : 'none']);
     fire(['set', 'user-agent', opts.ua]);
     fire(['change-list', 'http-header-fields', 'clr', '']);
     opts.headers.forEach(([k, v]) => { if (/^user-agent$/i.test(k)) fire(['set', 'user-agent', v]); else fire(['change-list', 'http-header-fields', 'append', k + ': ' + v]); });
     fire(['set', 'alang', opts.alang]); fire(['set', 'slang', opts.slang]); fire(['set', 'aid', opts.aid]); fire(['set', 'sid', 'no']);
-    fire(['set', 'speed', opts.speed]); fire(['set', 'volume', String(opts.volume)]); fire(['set', 'mute', opts.mute ? 'yes' : 'no']); fire(['set', 'pause', 'no']);
+    fire(['set', 'speed', opts.speed]); fire(['set', 'volume', String(opts.volume)]); fire(['set', 'mute', opts.mute ? 'yes' : 'no']); fire(['set', 'pause', opts.pause ? 'yes' : 'no']);
     fire(['set', 'cache-secs', String(opts.aheadSecs > 0 ? opts.aheadSecs : 3600000)]);   // Buffer ahead, or mpv's own (practically unbounded)
     fire(['set', 'demuxer-max-bytes', opts.maxBytes + 'MiB']);
     send(ss, ['loadfile', file, 'replace']).then((d) => {
