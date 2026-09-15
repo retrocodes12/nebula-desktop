@@ -121,9 +121,7 @@
         "libuuid1",
         "libsecret-1-0",
         "libasound2",
-        "xdg-utils"
-      ],
-      "recommends": [
+        "xdg-utils",
         "libmpv2 | libmpv1"
       ]
     },

@@ -8,8 +8,9 @@
  * server (input-ipc-server) carries commands, properties and events for the main process. The helper exits when mpv
  * quits, when its parent goes, or when its stdin (a pipe from the parent) closes.
  *
- *   nebula-mpv <ipc> <max-w> <max-h> <parent-pid> <token> <origin> <libmpv>[|<libmpv>...] [option=value ...]
- *       prints "READY <port>" once mpv is up and the frame server listens (GET /<token>/f… from <origin>, see frames.c)
+ *   nebula-mpv <ipc> <max-w> <max-h> <parent-pid> <token|-> <origin> <libmpv>[|<libmpv>...] [option=value ...]
+ *       prints "READY <port>" once mpv is up and the frame server listens (GET /<token>/f… from <origin>, see frames.c);
+ *       '-' for the token reads it from NEBULA_MPV_TOKEN (the command line is readable by every user on the machine)
  *   nebula-mpv --probe <libmpv>
  *       "OK <libmpv>" (exit 0) when it loads, starts and can draw in software; else "ERROR <why>" and exit 4 (will not
  *       load), 6/7 (mpv will not be made / start) or 8 (too old to draw here)
@@ -179,7 +180,9 @@ static int run(int argc, char **argv) {
   int ok = 0;
   for (char *c = strtok(cands, "|"); c && !ok; c = strtok(NULL, "|")) ok = load_one(c) && resolve();
   if (!ok) { say("ERROR no player library could be loaded"); return 4; }
-  int port = frames_init(maxw, maxh, argv[5], argv[6]);
+  /* the token is '-' on the command line and arrives in the environment (a command line is readable by every user) */
+  const char *token = strcmp(argv[5], "-") == 0 ? getenv("NEBULA_MPV_TOKEN") : argv[5];
+  int port = frames_init(maxw, maxh, token ? token : "", argv[6]);
   if (!port) { say("ERROR the frame server could not start"); return 5; }
 
   void *h = p_create();

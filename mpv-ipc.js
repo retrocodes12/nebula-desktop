@@ -23,7 +23,8 @@ function attach(win, origin) {
     if (on && blocker < 0) blocker = powerSaveBlocker.start('prevent-display-sleep');
     else if (!on && blocker >= 0) { try { powerSaveBlocker.stop(blocker); } catch (e) {} blocker = -1; }
   };
-  const tick = () => { send({ type: 'state', s: host.snapshot() }); awake(host.playing()); };
+  // awake only while a film plays in a window someone can see (not paused, not minimised)
+  const tick = () => { send({ type: 'state', s: host.snapshot() }); awake(host.playing() && win.isVisible() && !win.isMinimized()); };
   const run = (on) => {
     if (on && !ticker) ticker = setInterval(tick, 250);
     else if (!on && ticker) { clearInterval(ticker); ticker = null; awake(false); setTimeout(() => { if (!ticker) send({ type: 'state', s: host.snapshot() }); }, 400); }   // one last word: stopped, idle

@@ -25,12 +25,13 @@ const YESNO = /^(yes|no)$/, NUM = /^-?\d{1,7}(\.\d{1,6})?$/, TRACK = /^(\d{1,3}|
 const SETTABLE = { pause: YESNO, mute: YESNO, 'sub-bold': YESNO, volume: NUM, speed: NUM, 'sub-delay': NUM, 'sub-scale': NUM, 'sub-pos': NUM,
   'sub-border-size': NUM, 'sub-shadow-offset': NUM, aid: TRACK, sid: TRACK, 'sub-color': COLOR, 'sub-back-color': COLOR, 'sub-border-color': COLOR,
   'sub-shadow-color': COLOR, 'sub-font': /^(sans-serif|serif|monospace)$/, 'sub-border-style': /^(outline-and-shadow|opaque-box|background-box)$/,
-  'cache-secs': NUM, 'demuxer-max-bytes': /^\d{1,4}MiB$/ };
+  'cache-secs': /^\d{1,7}$/, 'demuxer-max-bytes': /^([1-9]\d{1,2}|10[0-2]\d)MiB$/ };
 const SEEK_MODE = /^(absolute|relative)(\+exact|\+keyframes)?$/;
 const MEDIA_FILE = /\.(mkv|mk3d|mp4|m4v|mov|avi|webm|ts|m2ts|mts|mpg|mpeg|vob|wmv|flv|ogv|3gp|mka|mp3|m4a|aac|flac|wav|ogg|opus|ac3|eac3|dts)$/i;
 
 let s = null;                                           // the helper session now running (see start)
 let starting = null, probing = null, failed = '', good = '', ver = '', rid = 0, loadSeq = 0, onEvent = null, origin = '';
+let reapT = null;                                       // an idle helper leaves after a while (the next play starts another)
 const grants = new Map();                               // id → a local file the user picked (load('local:<id>'))
 let grantSeq = 0;
 
@@ -69,8 +70,8 @@ function emit(e) {
 function on(cb) { onEvent = typeof cb === 'function' ? cb : null; }
 /** The page's origin: the frame server answers it (and only its fetches can read the frames). */
 function setOrigin(o) { if (/^http:\/\/127\.0\.0\.1:\d{2,5}$/.test(String(o))) origin = o; }
-function spawnHelper(args, stdin) {
-  const env = Object.assign({}, process.env);
+function spawnHelper(args, stdin, more) {
+  const env = Object.assign({}, process.env, more || {});
   delete env.LD_PRELOAD; delete env.LD_LIBRARY_PATH;                    // a plain process: the system's own libraries
   return cp.spawn(helperFile(), args, { env, stdio: [stdin, 'pipe', 'pipe'], windowsHide: true });
 }
@@ -135,8 +136,9 @@ function start() {
       ss.ipc = WIN ? '\\\\.\\pipe\\nebula-mpv-' + process.pid + '-' + crypto.randomBytes(8).toString('hex') : path.join(ss.dir, 'ipc');
     } catch (e) { return give('no temporary folder: ' + (e && e.message || e)); }
     let p;
-    // stdin stays a pipe: the helper leaves as it closes
-    try { p = spawnHelper([ss.ipc, String(MAX_W), String(MAX_H), String(process.pid), ss.token, origin || 'null', list.join('|')].concat(options()), 'pipe'); }
+    // stdin stays a pipe: the helper leaves as it closes. The token goes in the environment ('-' in its place): a command
+    // line can be read by any user on the machine
+    try { p = spawnHelper([ss.ipc, String(MAX_W), String(MAX_H), String(process.pid), '-', origin || 'null', list.join('|')].concat(options()), 'pipe', { NEBULA_MPV_TOKEN: ss.token }); }
     catch (e) { try { fs.rmSync(ss.dir, { recursive: true, force: true }); } catch (x) {} return give(String(e && e.message || e)); }
     ss.p = p; s = ss;
     p.stdin.on('error', () => {});
@@ -158,10 +160,11 @@ function start() {
         const m = /^ERROR\s*(.*)$/m.exec(out);
         return give((m ? m[1].trim() : 'the player helper stopped (' + (code != null ? 'exit ' + code : sig) + ')') + (last ? ' — ' + last : ''), !!FATAL[code]);
       }
-      const inPlay = ss.loaded || ss.busy;
-      if (s === ss) s = null;
+      const inPlay = ss.loaded || ss.busy, current = s === ss;
+      if (current) s = null;
       drop(ss, false);
-      if (inPlay && !ss.quitting) emit({ type: 'end', reason: 'error', error: 'the player stopped unexpectedly', detail: last, loaded: ss.loaded });
+      // a helper already replaced says nothing about the play now on
+      if (current && inPlay && !ss.quitting) emit({ type: 'end', reason: 'error', error: 'the player stopped unexpectedly', detail: last, loaded: ss.loaded });
     });
     timer = setTimeout(() => give('the player helper did not answer in 10 s'), 10000);
   });
@@ -191,7 +194,9 @@ function sweep() {
 function options() {
   const o = { hwdec: 'auto-copy-safe', 'keep-open': 'yes', 'msg-level': 'all=warn', 'input-default-bindings': 'no', 'input-vo-keyboard': 'no', 'osd-level': '0',
     config: 'no', 'load-scripts': 'no', osc: 'no', ytdl: 'no', 'sub-auto': 'no', 'audio-file-auto': 'no', cache: 'auto', 'network-timeout': '20',
-    'audio-client-name': 'Nebula', sid: 'no', 'hr-seek': 'yes', 'stream-lavf-o': 'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5',
+    'audio-client-name': 'Nebula', sid: 'no', 'hr-seek': 'yes',
+    // a dropped connection is picked up again inside FFmpeg for up to 10 s (past that the page reconnects, mpvState)
+    'stream-lavf-o': 'reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_delay_max=10',
     // the software renderer's scaling is most of a frame's cost: bicubic + ordered dither draws 4K HEVC at 1080p in 42 ms on
     // an i3-3217U where mpv's default lanczos + random dither took 53 (09-15); the page draws smaller when even that is too slow
     'zimg-scaler': 'bicubic', 'zimg-dither': 'ordered',
@@ -264,9 +269,10 @@ function event(ss, m) {
     ss.recent = []; ss.busy = true; emit({ type: 'start' });
   } else if (m.event === 'file-loaded') {
     if (!ours(ss)) return;
-    ss.loaded = true; emit({ type: 'loaded', tracks: ss.props['track-list'] || [] });
+    ss.loaded = true; emit({ type: 'loaded', tracks: ss.props['track-list'] || [], version: ver });
   } else if (m.event === 'end-file') {
     if (ss.expect == null || ss.expect === 'next' || (m.playlist_entry_id != null && m.playlist_entry_id !== ss.expect)) return;   // replaced or stopped: not news
+    if (m.reason === 'redirect') { ss.expect = 'next'; return; }   // a playlist link: mpv goes on to the entry it named
     const was = ss.loaded; ss.loaded = false; ss.busy = false;
     // what the host said, when it said anything (an HTTP status first), else mpv's last word
     const detail = ss.recent.filter((t) => /HTTP error \d{3}|\b[45]\d\d\b/.test(t)).pop() || ss.recent[ss.recent.length - 1] || '';
@@ -336,6 +342,7 @@ function clean(o) {
 /** Play `url` (http(s), or 'local:<id>' from grant()): o = { start, headers, ua, alang, slang, aheadSecs, maxBytes, aid, speed }.
     A new file starts on its own terms: the preferred language's track, 1×, unless o carries the last file's (a reconnect). */
 function load(url, o) {
+  clearTimeout(reapT);
   const my = ++loadSeq, file = target(url), opts = clean(o && typeof o === 'object' ? o : {});
   if (s) { s.loaded = false; s.expect = null; }
   if (!file) { setImmediate(() => { if (my === loadSeq) emit({ type: 'end', reason: 'error', error: 'this address cannot be played here', detail: '', loaded: false }); }); return { ok: false }; }
@@ -391,6 +398,10 @@ function stop() {
   if (!s) return;
   s.loaded = false; s.busy = false; s.expect = null; s.waiting = false; s.queue = [];
   if (s.sock) fire(['stop']);
+  // nothing played for three minutes: the helper goes (its frame buffers, its wakeups); the next play starts another
+  clearTimeout(reapT);
+  reapT = setTimeout(() => { if (s && !s.busy && !s.loaded && !starting) dispose(); }, 180000);
+  if (reapT.unref) reapT.unref();
 }
 /** A subtitle the page fetched, written to a file in this helper's folder and added as a track (not shown until chosen). */
 async function subAdd(text, label, lang) {

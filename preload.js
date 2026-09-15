@@ -55,8 +55,8 @@ function mpvPicture() {
     '}'].join('\n');
   let onEvent = null, base = info0.base || '', props = {}, tracks = [];
   let canvas = null, gl = null, gl2 = false, bw = 0, bh = 0, rw = 0, rh = 0, tw = 0, th = 0, vw = 0, vh = 0, uMode = null, mode = 0, modeSet = -1;
-  let running = false, pumpId = 0, next = null, waiter = null, raf = 0, frames = 0, drawn = 0, upMs = 0, lastCount = 0, count0 = 0, lastGen = -1, staleGen = -1;
-  let scale = 1, drawEma = 0, slowAt = 0, quickAt = 0, lastDrop = 0;
+  let running = false, pumpId = 0, next = null, raf = 0, frames = 0, drawn = 0, upMs = 0, lastCount = 0, count0 = 0, lastGen = -1, staleGen = -1;
+  let scale = 1, drawEma = 0, slowAt = 0, quickAt = 0, lastDrop = 0, hist = [];
   const emit = (m) => { if (onEvent) { try { onEvent(m); } catch (x) {} } };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -109,9 +109,9 @@ function mpvPicture() {
       upMs = upMs ? upMs * 0.9 + d * 0.1 : d;
       if (f.drawMs > 0 && f.w === rw && f.h === rh) drawEma = drawEma ? drawEma * 0.9 + f.drawMs * 0.1 : f.drawMs;
     }
-    if (waiter) { const w = waiter; waiter = null; w(); }
   }
-  /** One frame at a time: asked for, drawn at the next animation frame, then the next asked for. */
+  /** Frames are asked for as fast as the helper draws them (each request is answered with the next one) and the newest is
+      drawn at each animation frame: a frame not yet drawn when a newer one arrives is skipped, and adapt() watches for that. */
   async function pump(id) {
     let fails = 0;
     while (running && id === pumpId) {
@@ -133,24 +133,28 @@ function mpvPicture() {
       if (hd[5] === staleGen) continue;                  // the file before this load, still on its way out
       next = { buf, w: hd[1], h: hd[2], stride: hd[3], drawMs: hd[4] / 1000, gen: hd[5] };
       if (!raf) raf = requestAnimationFrame(draw);
-      await new Promise((ok) => { waiter = ok; setTimeout(ok, 100); });
     }
   }
-  /** Draw smaller when a frame's drawing takes most of its time slot (or mpv drops frames), larger again once it is quick
+  /** Draw smaller when a frame's drawing takes most of its time slot, mpv drops frames, or this page shows well under the
+      frames the helper draws (the fetch and upload cannot keep up — a 50/60 fps film); larger again once all of it is quick
       for a while: steps of 0.8. A new file starts at full size. */
   function adapt(s) {
     const fps = s.vfps > 0 ? s.vfps : (s.fps > 0 ? s.fps : 24), slot = 1000 / Math.min(120, Math.max(10, fps)), now = Date.now();
     const dropped = (s.drop || 0) > lastDrop;
     lastDrop = s.drop || 0;
-    if (s.pause !== false || s.cache || document.hidden || !(drawEma > 0)) { slowAt = quickAt = 0; return; }
-    if (drawEma > slot * 0.75 || (dropped && drawEma > slot * 0.5)) {
+    hist.push({ f: frames, d: drawn });                  // the last two seconds (a state comes four times a second)
+    if (hist.length > 9) hist.shift();
+    const dd = drawn - hist[0].d, df = frames - hist[0].f, pageSlow = hist.length >= 8 && dd >= 12 && df < dd * 0.85, pageOk = dd < 12 || df >= dd * 0.97;
+    if (s.pause !== false || s.cache || document.hidden) { slowAt = quickAt = 0; return; }
+    const drawSlow = drawEma > 0 && (drawEma > slot * 0.75 || (dropped && drawEma > slot * 0.5));
+    if (drawSlow || pageSlow) {
       quickAt = 0;
       if (!slowAt) slowAt = now;
-      else if (now - slowAt >= 1500 && bw * scale > MIN_W) { scale = Math.max(0.3, scale * 0.8); slowAt = now; drawEma = 0; }
-    } else if (drawEma < slot * 0.35 && scale < 1) {
+      else if (now - slowAt >= 1500 && bw * scale > MIN_W) { scale = Math.max(0.3, scale * 0.8); slowAt = now; drawEma = 0; hist = []; }
+    } else if (drawEma > 0 && drawEma < slot * 0.35 && pageOk && scale < 1) {
       slowAt = 0;
       if (!quickAt) quickAt = now;
-      else if (now - quickAt >= 8000) { scale = Math.min(1, scale / 0.8); quickAt = now; drawEma = 0; }
+      else if (now - quickAt >= 8000) { scale = Math.min(1, scale / 0.8); quickAt = now; drawEma = 0; hist = []; }
     } else slowAt = quickAt = 0;
   }
   ipcRenderer.on('nebula:mpv', (_e, m) => {
@@ -188,7 +192,7 @@ function mpvPicture() {
     load(url, o) {
       if (typeof url !== 'string' || !(/^https?:\/\//i.test(url) || /^local:\d+$/.test(url))) return { ok: false, error: 'this address cannot be played here' };
       ipcRenderer.send('mpv-load', url, o && typeof o === 'object' ? o : {});
-      running = true; frames = 0; drawn = 0; count0 = lastCount; scale = 1; drawEma = 0; slowAt = quickAt = 0; lastDrop = 0; vw = vh = 0; staleGen = lastGen; next = null;
+      running = true; frames = 0; drawn = 0; count0 = lastCount; scale = 1; drawEma = 0; slowAt = quickAt = 0; lastDrop = 0; hist = []; vw = vh = 0; staleGen = lastGen; next = null;
       pump(++pumpId);
       return { ok: true };
     },
