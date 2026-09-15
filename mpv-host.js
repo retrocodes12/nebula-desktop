@@ -66,9 +66,9 @@ function version() { return ver; }
 function frameBase() { return (s && s.port && s.sock) ? 'http://127.0.0.1:' + s.port + '/' + s.token + '/f' : ''; }
 function info() { const ok = available(); return { available: ok, error: ok ? '' : whyNot(), lib: good || libs().join(' | '), version: ver, base: frameBase() }; }
 const DEBUG = !!process.env.NEBULA_MPV_DEBUG;          // the rigs' trace: what mpv said and what went to the page
-// a line saying the connection failed under the file (FFmpeg's http layer): a reconnect for anything but a plain close, or a
-// known length cut short. NOT "ends prematurely … should be 18446744073709551615" + "error=Input/output error": with no length
-// given, that is how every close-delimited stream ends, whole or not (seen 09-15) — and a retry after it may fail any way
+// a line saying the connection failed under the file (FFmpeg's http layer): a reconnect for anything but a plain close, a known
+// length cut short, or (event()) any reconnect short of a size the host gave — https dropped unclosed says just "Input/output
+// error" (GnuTLS, 09-15). NOT a plain close with no size: every close-delimited stream ends so, whole or not, and a retry may fail any way
 const NET_ERR = /Will reconnect at \d+ in \d+ second\(s\), error=(?!Input\/output error|I\/O error)|ends prematurely at \d+, should be (?!18446744073709551615\b)\d+/i;
 function emit(e) {
   if (DEBUG && e.type !== 'state') console.log('[mpv-host] emit ' + e.type + (e.reason ? ' ' + e.reason : '') + (e.error ? ' ' + e.error : ''));
@@ -298,8 +298,8 @@ function event(ss, m) {
     if (t) { ss.recent.push(t); if (ss.recent.length > 6) ss.recent.shift(); }
     // where the download stood when the connection failed (film seconds): an end of file there is a lost connection, not the
     // film's end — even where mpv's length is only its estimate of what it has read (snapshot().neterr)
-    const P = ss.props;
-    if (NET_ERR.test(t) && typeof P['time-pos'] === 'number') {
+    const P = ss.props, r = /Will reconnect at (\d+) in \d+ second\(s\), error=/i.exec(t);
+    if ((NET_ERR.test(t) || (r && P['file-size'] > 0 && +r[1] < P['file-size'])) && typeof P['time-pos'] === 'number') {
       ss.neterr = P['time-pos'] + (typeof P['demuxer-cache-duration'] === 'number' ? P['demuxer-cache-duration'] : 0); ss.netAt = Date.now(); ss.netGot = null;
     }
     if (ss === s && /Cannot seek/i.test(t)) emit({ type: 'seekfail' });   // (mpv refused a seek: no restart will come for it)
