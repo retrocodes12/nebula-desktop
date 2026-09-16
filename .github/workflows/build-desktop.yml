@@ -176,7 +176,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          This build puts the app back the way it was before tonight’s design pass (1.74.0), while that pass is looked at again. Nothing else changes.
+          Streams from add-ons that serve more than one kind of content, such as films and live channels together, now appear where they were missing.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
