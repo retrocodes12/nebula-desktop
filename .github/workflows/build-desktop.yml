@@ -176,15 +176,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          A design pass over the whole app, from an audit of every screen.
-
-          Title pages: the buttons sit on one line, with My List, Surprise me and Recommend as round icons beside Play. A film can be marked watched from its own page. A line under the seasons tells you that holding or right-clicking an episode opens its actions, until you have used it once. Genres and the cast read as facts rather than as buttons that do nothing.
-
-          Player: Quality lists the sizes you recognise instead of raw numbers, and opens under the button you pressed. The subtitles panel no longer sits on top of the title or the bar. The controls keep their contrast over a bright picture. The pause board no longer counts the time down twice.
-
-          Settings: the sections run down the side of the window instead of one long scroll, descriptions no longer collide with the controls beside them, and a switched-off Home row shows an empty circle you can press rather than nothing at all.
-
-          Elsewhere: stream rows no longer repeat what they already show, a title still running reads 2023 – now rather than ending in a dash, and every card keeps room for two lines so the years line up across a row.
+          This build puts the app back the way it was before tonight’s design pass (1.74.0), while that pass is looked at again. Nothing else changes.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
