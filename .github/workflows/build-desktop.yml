@@ -176,7 +176,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          Streams from add-ons that serve more than one kind of content, such as films and live channels together, now appear where they were missing.
+          Carries the shared player's TV changes: on a TV, Left and Right show where you are about to jump before you go there (OK jumps, Back stays). Nothing changes on the computer.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
