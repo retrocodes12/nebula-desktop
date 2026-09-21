@@ -176,7 +176,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          Supporter tiers: Supporter, Supporter Plus and Founder. Settings › Support shows your tier, lets Supporter Plus pick a mark and any accent colour, and gives Founders a gold ring. Every feature stays free.
+          A live channel this computer cannot decode — Dolby Digital Plus sound is the usual one — now plays through the full-format player instead of stopping at an error code. Fifty-one subtitle and audio languages instead of seventeen, chosen from a list you scroll.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
