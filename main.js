@@ -20,7 +20,7 @@ function tool(name) {
 const FFMPEG = tool('ffmpeg'), FFPROBE = tool('ffprobe');
 // Can they run here? Asked in the background once the single-instance lock is ours (it was a 5 s synchronous check before
 // the lock, and a first run under a virus scan outlasted it: the converter was off for the session); a failed check is asked
-// once more by the first /probe. The page's `transcode` waits for the answer. NEBULA_NO_FFMPEG=1: never (the rigs use it).
+// once more by the first /probe or the page's second ask. The page never waits on it (transcodeNow). NEBULA_NO_FFMPEG=1: never.
 const tcRun = (bin) => new Promise((ok) => {
   let p; try { p = spawn(bin, ['-version'], { stdio: 'ignore', windowsHide: true }); } catch (e) { ok(false); return; }
   const t = setTimeout(() => { try { p.kill('SIGKILL'); } catch (e) {} ok(false); }, 30000);
@@ -29,7 +29,7 @@ const tcRun = (bin) => new Promise((ok) => {
 const tc = { ok: process.env.NEBULA_NO_FFMPEG ? false : null, run: null, again: !process.env.NEBULA_NO_FFMPEG };
 function tcCheck() { if (!tc.run) tc.run = tc.ok !== null ? Promise.resolve(tc.ok) : Promise.all([tcRun(FFMPEG), tcRun(FFPROBE)]).then((v) => (tc.ok = v[0] && v[1])); return tc.run; }
 function tcReady() { if (tc.ok === false && tc.again) { tc.again = false; tc.ok = null; tc.run = null; } return tc.ok !== null ? Promise.resolve(tc.ok) : tcCheck(); }
-ipcMain.on('tc-available', (event) => { if (tc.ok !== null) event.returnValue = tc.ok; else tcCheck().then((v) => { event.returnValue = v; }); });
+ipcMain.handle('tc-available', () => tcReady());   // async: a synchronous answer froze the page for as long as a slow check took
 
 // ---- Share with your TV (relay.js): the read-ahead cache the TV plays through. The page flips it and publishes its address (it holds the credential).
 function relayState(extra) { return Object.assign(relay.info(), { plat: process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'mac' : 'linux' }, extra || {}); }

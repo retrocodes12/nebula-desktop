@@ -230,6 +230,12 @@ function mpvPicture() {
 }
 const mpv = mpvPicture();
 
+// The converter's availability: asked without blocking the page (a slow first check under a virus scan froze it for up to
+// 30 s when this was sendSync), and asked once more a minute later if the first check failed.
+let tcOk = false;
+const tcAsk = () => ipcRenderer.invoke('tc-available').then((v) => { tcOk = v === true; }).catch(() => {});
+tcAsk().then(() => { if (!tcOk) setTimeout(tcAsk, 60000); });
+
 contextBridge.exposeInMainWorld('nebulaDesktop', {
   mpv: mpv ? {
     info: () => mpv.info(), on: (cb) => mpv.on(cb), attach: (id) => mpv.attach(id), load: (url, o) => mpv.load(url, o),
@@ -243,7 +249,8 @@ contextBridge.exposeInMainWorld('nebulaDesktop', {
   },
   setMiniMode: (on) => ipcRenderer.invoke('mini-mode', !!on),
   onFlush: (cb) => { ipcRenderer.on('nebula:flush', () => { try { cb(); } catch (e) {} }); },
-  transcode: ipcRenderer.sendSync('tc-available') === true,
+  transcode: false,                  // the old one-shot answer, for a page that still reads it; the live one is transcodeNow
+  transcodeNow: () => tcOk,          // false until the shell's FFmpeg check answers (asked in the background, never waited on)
   update: {
     info: ipcRenderer.sendSync('update-info'),
     check: () => ipcRenderer.invoke('update-check'),
