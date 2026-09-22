@@ -301,8 +301,10 @@ function updInstall() {
   upd.manual = true;
   if (upd.kind === 'portable') return portableInstall();
   updSet({ state: 'installing' });
-  // silent install into the same folder, then the installer starts the new Nebula
-  setImmediate(() => { try { getUpdater().quitAndInstall(true, true); } catch (e) { updSet({ state: 'error', error: updErrorText(e) }); } });
+  // silent install into the same folder, then the installer starts the new Nebula. The AppImage's new file starts AT ONCE,
+  // while this process still holds the lock through the close flush: the stamp, inherited, tells it to keep asking (below)
+  process.env.NEBULA_RELAUNCH_AT = String(Date.now());
+  setImmediate(() => { try { getUpdater().quitAndInstall(true, true); } catch (e) { delete process.env.NEBULA_RELAUNCH_AT; updSet({ state: 'error', error: updErrorText(e) }); } });
   return upd;
 }
 ipcMain.on('update-info', (event) => { event.returnValue = upd; });
@@ -466,11 +468,12 @@ async function createWindow() {
   });
 }
 
-// Only one Nebula at a time: a second copy would take the next port and see an empty
-// library. Hand its launch to the running window instead — except right after the portable
-// build swapped itself (its .old.exe sibling is still there): that launch IS the relaunch, and
-// the old process may still be letting go of the lock, so keep asking for a few seconds.
-const RELAUNCHED = !!(PORTABLE_FILE && fs.existsSync(PORTABLE_FILE.replace(/\.exe$/i, '') + '.old.exe'));
+// Only one Nebula at a time: a second copy would take the next port and see an empty library. Hand its launch to the
+// running window instead — except right after an update swapped the program: that launch IS the relaunch, and the old
+// process may still be letting go of the lock, so keep asking for a few seconds. The portable build's cue is its .old.exe
+// sibling; the others' is a NEBULA_RELAUNCH_AT under 30 s old, dropped here so nothing this copy starts inherits it.
+const RELAUNCH_AT = Number(process.env.NEBULA_RELAUNCH_AT) || 0; delete process.env.NEBULA_RELAUNCH_AT;
+const RELAUNCHED = !!(PORTABLE_FILE && fs.existsSync(PORTABLE_FILE.replace(/\.exe$/i, '') + '.old.exe')) || (RELAUNCH_AT > 0 && Math.abs(Date.now() - RELAUNCH_AT) < 30000);
 async function acquireLock() {
   if (app.requestSingleInstanceLock()) return true;
   if (!RELAUNCHED) return false;
