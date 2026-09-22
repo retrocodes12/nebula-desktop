@@ -27,6 +27,7 @@ const LINGER = 45000;                                 // a reader nobody has rea
 const IDLE = 600000;                                  // an address nobody asked about for this long is forgotten
 const WAIT = 40000;                                   // the TV's request waits this long for a byte, then gives up
 const EDGE_HOLD = 6000;                               // after a guess found nothing (the live edge), no guesses past it for this long
+const HOST_IDLE = 20000;                              // a host silent this long while we WANT bytes is gone (never counted while we hold it)
 const MANIFEST_RE = /\.(mpd|m3u8|m3u|xml|json|vtt|srt|ttml|dfxp|ass|ssa|txt|html?|key)(\?|#|$)/i;
 const TEXT_TYPE_RE = /^text\/|xml|json|mpegurl/i;
 
@@ -95,7 +96,7 @@ function fetchUpstream(url, headers, method, cb, hop, noFollow) {
       headers: Object.assign({ 'User-Agent': ua, Accept: '*/*', 'Accept-Encoding': 'identity' }, headers || {}),
       // the connection goes to the address that passed the check, whatever the name says a moment later
       lookup: (h, o, done) => (o && o.all) ? done(null, [{ address, family }]) : done(null, address, family),
-      timeout: 20000,
+      timeout: HOST_IDLE,
     };
     let done = false;
     const req = mod.request(u, opts, (res) => {
@@ -105,6 +106,11 @@ function fetchUpstream(url, headers, method, cb, hop, noFollow) {
         let next; try { next = new URL(loc, u).href; } catch (e) { return cb(new RelayError(502, 'bad redirect')); }
         return fetchUpstream(next, headers, method, cb, (hop || 0) + 1);
       }
+      // the idle timer is for a host gone silent, not for a connection held on purpose: a reader paused far ahead of
+      // the TV, or a pass-through the TV stopped reading, waits minutes and must still be there after (it killed every
+      // paused reader 20 s into its pause). Off while paused, back on when bytes are wanted again.
+      res.on('pause', () => { try { if (res.socket) res.socket.setTimeout(0); } catch (e) {} });
+      res.on('resume', () => { try { if (res.socket) res.socket.setTimeout(HOST_IDLE); } catch (e) {} });
       done = true; cb(null, res);
     });
     req.on('timeout', () => req.destroy(new Error('timed out')));
@@ -168,7 +174,9 @@ function startReader(e, from, pre) {
   stopReader(e);
   const r = { from, pos: from, pending: [], pendingLen: 0, res: null, paused: false, pre: !!pre, dead: false, startedAt: Date.now() };
   e.reader = r; e.fail = null;
-  fetchUpstream(e.url, from > 0 ? { Range: 'bytes=' + from + '-' } : {}, 'GET', (err, res) => {
+  // always a Range, from 0 too: a host that ignores ranges answers 200 to this very first read, so it is known before
+  // the TV has been promised byte ranges — found only at a reconnect, the film died there, mid-answer
+  fetchUpstream(e.url, { Range: 'bytes=' + from + '-' }, 'GET', (err, res) => {
     if (r.dead) { if (res) res.destroy(); return; }
     // status 0 = not a failure but not cacheable either: from here on this address passes straight through
     // (a refusal of our own — a bad or private address — is not remembered: it costs nothing to say again)
@@ -186,9 +194,14 @@ function startReader(e, from, pre) {
       if (m[3] === '*') return fail(0, 'no length');
       e.total = Number(m[3]);
     } else if (st === 200) {
-      if (from > 0) { e.ranges = false; return fail(0, 'host ignores ranges'); }
+      // the host ignores ranges: nothing it sends can be resumed or sought. A piece small enough to take whole in one go
+      // is still cached (and cut here); anything bigger — a film — goes straight through, and the TV gets the host's own
+      // answer, exactly as if it played the file directly
+      e.ranges = false;
+      if (from > 0) return fail(0, 'host ignores ranges');
       const cl = Number(res.headers['content-length']);
       if (!(cl > 0)) return fail(0, 'no length');                   // an endless stream, or unknown: straight through
+      if (cl > PRE_MAX) return fail(0, 'host ignores ranges');
       e.total = cl;
     } else return fail(st, 'host answered ' + st);
     if (type) e.type = type;
@@ -209,8 +222,9 @@ function startReader(e, from, pre) {
       r.pending.push(d); r.pendingLen += d.length;
       flush(false);
       const limit = r.pre && !e.far ? PRE_MAX : AHEAD, lead = r.pos - Math.max(e.far, r.from);
-      // far enough ahead, or the cache is nearly full: wait for the TV to catch up (its next read resumes this)
-      if (!r.paused && (lead > limit || (cacheBytes > cap * 0.9 && lead > 2 * CHUNK))) { r.paused = true; res.pause(); }
+      // far enough ahead, or the cache is nearly full: wait for the TV to catch up (its next read resumes this). Never a
+      // host that ignores ranges: that piece is small (above) and read whole, since it could not be picked up again
+      if (!r.paused && e.ranges !== false && (lead > limit || (cacheBytes > cap * 0.9 && lead > 2 * CHUNK))) { r.paused = true; res.pause(); }
     });
     res.on('end', () => {
       if (r.dead) return;
@@ -230,7 +244,7 @@ function ensureReader(e, idx) {
   if (want > e.far) e.far = want;                               // asked for counts as taken: the reader's lead is measured from here
   if (r && !r.dead && r.pos <= want && want - r.pos <= AHEAD) { if (r.paused && r.res) { r.paused = false; r.res.resume(); } return; }
   if (r && !r.dead && r.res === null && r.from <= want && want - r.from <= AHEAD) return;   // still connecting
-  startReader(e, want, false);
+  startReader(e, e.ranges === false ? 0 : want, false);          // a host that ignores ranges can only be read again from the start
 }
 
 // ---- guessing the next pieces of a segmented stream
@@ -373,7 +387,7 @@ async function serve(req, res, url) {
   if (e.plain) return passthrough(req, res, url);
   if (e.fail) return failRes(res, e.fail);
   if (e.total < 0) return failRes(res, new RelayError(504, 'the host did not answer in time'));
-  if (rg && a > 0 && e.ranges === false) return passthrough(req, res, url);
+  // (a host that ignores ranges is either plain by now or a small piece cached whole, which any range can be cut from)
   const total = e.total;
   if (a >= total) { res.writeHead(416, { 'Content-Range': 'bytes */' + total }); res.end(); return; }
   const end = rg && rg.b != null ? Math.min(rg.b, total - 1) : total - 1;
