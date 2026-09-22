@@ -48,6 +48,18 @@
         }
       ],
       "icon": "build/icon.png",
+      "files": [
+        "main.js",
+        "preload.js",
+        "relay.js",
+        "source.js",
+        "retime.js",
+        "mpv-ipc.js",
+        "mpv-host.js",
+        "renderer/**/*",
+        "!node_modules/ffprobe-static/bin/{darwin,linux}/**",
+        "!node_modules/ffprobe-static/bin/win32/ia32/**"
+      ],
       "extraResources": [
         {
           "from": "build/mpv/win",
