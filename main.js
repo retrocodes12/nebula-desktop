@@ -2,14 +2,13 @@ const { app, BrowserWindow, Menu, dialog, ipcMain, net, screen, session, shell }
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { spawn, spawnSync } = require('child_process');
+const { spawn } = require('child_process');
 const os = require('os');
 const relay = require('./relay'), source = require('./source'), { retime } = require('./retime');
 
-// ---- FFmpeg in the shell: what Chromium cannot decode (Dolby Digital / DTS / TrueHD audio, HEVC without a
-// hardware decoder) is re-encoded on the fly, the rest copied through. The player asks /probe what a file holds,
-// then pulls /seg pieces and appends them itself. Bundled through ffmpeg-static + ffprobe-static (unpacked from
-// the asar); a dev checkout without them falls back to whatever is on PATH.
+// ---- FFmpeg in the shell: what Chromium cannot decode (Dolby Digital / DTS / TrueHD audio, HEVC without a hardware
+// decoder) is re-encoded on the fly, the rest copied through. The player asks /probe what a file holds, then pulls /seg
+// pieces and appends them itself. Bundled through ffmpeg-static + ffprobe-static (unpacked from the asar); a dev checkout without them falls back to PATH.
 function tool(name) {
   try {
     const mod = require(name === 'ffmpeg' ? 'ffmpeg-static' : 'ffprobe-static');
@@ -19,12 +18,18 @@ function tool(name) {
   return name;
 }
 const FFMPEG = tool('ffmpeg'), FFPROBE = tool('ffprobe');
-const TC_OK = (() => {
-  if (process.env.NEBULA_NO_FFMPEG) return false;          // the rigs prove the no-converter path with this
-  try { return spawnSync(FFMPEG, ['-version'], { timeout: 5000 }).status === 0 && spawnSync(FFPROBE, ['-version'], { timeout: 5000 }).status === 0; }
-  catch (e) { return false; }
-})();
-ipcMain.on('tc-available', (event) => { event.returnValue = TC_OK; });
+// Can they run here? Asked in the background once the single-instance lock is ours (it was a 5 s synchronous check before
+// the lock, and a first run under a virus scan outlasted it: the converter was off for the session); a failed check is asked
+// once more by the first /probe. The page's `transcode` waits for the answer. NEBULA_NO_FFMPEG=1: never (the rigs use it).
+const tcRun = (bin) => new Promise((ok) => {
+  let p; try { p = spawn(bin, ['-version'], { stdio: 'ignore', windowsHide: true }); } catch (e) { ok(false); return; }
+  const t = setTimeout(() => { try { p.kill('SIGKILL'); } catch (e) {} ok(false); }, 30000);
+  p.on('error', () => { clearTimeout(t); ok(false); }); p.on('close', (code) => { clearTimeout(t); ok(code === 0); });
+});
+const tc = { ok: process.env.NEBULA_NO_FFMPEG ? false : null, run: null, again: !process.env.NEBULA_NO_FFMPEG };
+function tcCheck() { if (!tc.run) tc.run = tc.ok !== null ? Promise.resolve(tc.ok) : Promise.all([tcRun(FFMPEG), tcRun(FFPROBE)]).then((v) => (tc.ok = v[0] && v[1])); return tc.run; }
+function tcReady() { if (tc.ok === false && tc.again) { tc.again = false; tc.ok = null; tc.run = null; } return tc.ok !== null ? Promise.resolve(tc.ok) : tcCheck(); }
+ipcMain.on('tc-available', (event) => { if (tc.ok !== null) event.returnValue = tc.ok; else tcCheck().then((v) => { event.returnValue = v; }); });
 
 // ---- Share with your TV (relay.js): the read-ahead cache the TV plays through. The page flips it and publishes its address (it holds the credential).
 function relayState(extra) { return Object.assign(relay.info(), { plat: process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'mac' : 'linux' }, extra || {}); }
@@ -116,15 +121,13 @@ async function segment(q, hd, req, res) {
   ff.on('close', (code, sig) => { if ((code || sig) && !res.writableEnded) { try { res.destroy(); } catch (e) {} } if ((code || sig) && !killed) console.error('ffmpeg seg exit', code || sig, err.trim().slice(-300)); });   // a crash is a failed piece, never an empty one
 }
 
-// ---- In-app update. The installer build asks GitHub for the newest release through electron-updater:
-// the latest.yml beside the installer names the file and its sha512, the blockmap makes the download
-// differential, and the installer runs silently on restart into the same folder. The portable build
-// cannot be replaced by an installer: it downloads the new portable exe beside the running one, steps
-// its own file aside (Windows lets a running exe be renamed, not overwritten), gives the new file its
-// name and starts it once this process has gone. A dev checkout does neither.
-// On Linux the same electron-updater does both shapes from latest-linux.yml (which lists BOTH files):
-// the AppImage is swapped for the new one in place and restarted, the .deb is handed to dpkg, which
-// asks for a password first. An unpacked build is neither and takes the web path like a dev checkout.
+// ---- In-app update. The installer build asks GitHub for the newest release through electron-updater: the latest.yml
+// beside the installer names the file and its sha512, the blockmap makes the download differential, and the installer runs
+// silently on restart into the same folder. The portable build cannot be replaced by an installer: it downloads the new
+// portable exe beside the running one, steps its own file aside (Windows lets a running exe be renamed, not overwritten),
+// gives the new file its name and starts it once this process has gone. A dev checkout does neither.
+// On Linux the same electron-updater does both shapes from latest-linux.yml (which lists BOTH files): the AppImage is swapped
+// for the new one in place and restarted, the .deb is handed to dpkg, which asks for a password first. An unpacked build is neither and takes the web path.
 // NEBULA_UPDATE_FEED=<url> points every kind at a local feed (the rigs); NEBULA_UPDATE_DELAY=<ms> moves the first check.
 const UPDATE_REPO = 'https://github.com/retrocodes12/nebula-desktop';
 const PORTABLE_FILE = process.env.PORTABLE_EXECUTABLE_FILE || '';
@@ -315,26 +318,21 @@ function updSchedule() {
   setInterval(() => { if (upd.state === 'idle' || upd.state === 'current' || upd.state === 'error') updCheck(false); }, 6 * 3600 * 1000);
 }
 
-// Chromium only exposes a plain file's audio tracks (video.audioTracks — the Hindi /
-// Tamil / English choices inside one MKV) behind this Blink feature. The player already
-// switches them natively when the list exists; without the flag every such file reports
-// one track. Must be set before the app is ready.
+// Chromium only exposes a plain file's audio tracks (video.audioTracks — the Hindi / Tamil / English choices inside one MKV)
+// behind this Blink feature. The player already switches them natively when the list exists; without the flag every such
+// file reports one track. Must be set before the app is ready.
 app.commandLine.appendSwitch('enable-blink-features', 'AudioVideoTracks');
 
-// The player's storage (add-ons, profile, progress, settings) is keyed by the page's
-// origin, and the origin includes the port — so the port must be the SAME on every
-// launch. listen(0) picked a random one and made every restart a fresh install.
+// The player's storage (add-ons, profile, progress, settings) is keyed by the page's origin, and the origin includes the
+// port — so the port must be the SAME on every launch. listen(0) picked a random one and made every restart a fresh install.
 const PORTS = [47313, 47314, 47315, 47316, 47317];
 
 // Serve the player over http://127.0.0.1 instead of file:// — Chromium blocks EME
 // (ClearKey) on file:// (opaque) origins, so a localhost origin is required for DRM.
 function startServer() {
   const root = path.join(__dirname, 'renderer');
-  const mime = {
-    '.html': 'text/html; charset=utf-8', '.js': 'application/javascript',
-    '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml',
-    '.json': 'application/json', '.ico': 'image/x-icon', '.woff2': 'font/woff2',
-  };
+  const mime = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript', '.css': 'text/css', '.png': 'image/png',
+    '.svg': 'image/svg+xml', '.json': 'application/json', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
   const handler = (req, res) => {
     try {
       const u = new URL(req.url || '/', 'http://127.0.0.1');
@@ -345,10 +343,12 @@ function startServer() {
         const sfs = String(req.headers['sec-fetch-site'] || '');
         if (sfs && sfs !== 'same-origin') { res.statusCode = 403; res.end('forbidden'); return; }
         const src = u.searchParams.get('src') || '';
-        if (!TC_OK) { res.statusCode = 501; res.end('no ffmpeg'); return; }
-        if (!httpUrl(src)) { res.statusCode = 400; res.end('bad src'); return; }
-        const hd = source.parseHeaders(u.searchParams.get('h'));   // the add-on's request headers for the file (proxyHeaders)
-        (u.pathname === '/probe' ? probe(src, hd, res) : segment(u.searchParams, hd, req, res)).catch((e) => { if (!res.headersSent) { res.statusCode = 502; res.end(String((e && e.message) || e)); } });
+        tcReady().then((ok) => {
+          if (!ok) { res.statusCode = 501; res.end('no ffmpeg'); return; }
+          if (!httpUrl(src)) { res.statusCode = 400; res.end('bad src'); return; }
+          const hd = source.parseHeaders(u.searchParams.get('h'));   // the add-on's request headers for the file (proxyHeaders)
+          return u.pathname === '/probe' ? probe(src, hd, res) : segment(u.searchParams, hd, req, res);
+        }).catch((e) => { if (!res.headersSent) { res.statusCode = 502; res.end(String((e && e.message) || e)); } });
         return;
       }
       let p = decodeURIComponent((req.url || '/').split('?')[0]);
@@ -387,19 +387,9 @@ async function createWindow() {
   session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(true));
 
   const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    minWidth: 900,
-    minHeight: 600,
-    backgroundColor: '#000000',
-    autoHideMenuBar: true,
-    title: 'Nebula',
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false, sandbox: true,    // the full-format player lives in the main process (mpv-ipc.js): the page stays sandboxed
-      backgroundThrottling: false,
-    },
+    width: 1280, height: 800, minWidth: 900, minHeight: 600, backgroundColor: '#000000', autoHideMenuBar: true, title: 'Nebula',
+    // sandbox: the full-format player lives in the main process (mpv-ipc.js): the page stays sandboxed
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   });
   win.setMenuBarVisibility(false);
   require('./mpv-ipc').attach(win, `http://127.0.0.1:${port}`);
@@ -486,6 +476,7 @@ async function acquireLock() {
 }
 acquireLock().then((got) => {
   if (!got) { app.quit(); return; }
+  tcCheck();                                               // FFmpeg's check, in the background from here (see tcRun)
   // No stock File/Edit/View bar (Alt used to reveal it) and none of its shortcuts:
   // Ctrl+R restarted the stream, Ctrl+W closed the window, F11 fought the player's own fullscreen.
   Menu.setApplicationMenu(null);
