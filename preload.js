@@ -5,8 +5,9 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 // machine lives in the main process and answers over IPC.
 //   setMiniMode(true/false) — the small always-on-top mini window
 //   onFlush(cb)             — the window is closing: write progress and push the cloud NOW
-//   transcode               — true when the shell has FFmpeg: /probe and /seg on this origin
-//                             turn files Chromium cannot decode into pieces it can
+//   transcodeNow()          — true once the shell has found FFmpeg: /probe and /seg on this origin turn files Chromium
+//                             cannot decode into pieces it can (asked in the background; `transcode` is a constant
+//                             false kept for an older page)
 //   update                  — the in-app updater: info (kind setup|portable|appimage|deb|dev, plat, version), check() /
 //                             download() / install() each answer with the state, on(cb) streams it
 //   relay                   — Share with your TV: info() = {on, port, token, hosts, name, plat, bytes, served, error?},
