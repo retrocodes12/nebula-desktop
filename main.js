@@ -386,15 +386,18 @@ function startServer() {
 
 async function createWindow() {
   const port = await startServer();
-  // Grant media/EME permissions.
-  session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(true));
-
   const win = new BrowserWindow({
     width: 1280, height: 800, minWidth: 900, minHeight: 600, backgroundColor: '#000000', autoHideMenuBar: true, title: 'Nebula',
     // sandbox: the full-format player lives in the main process (mpv-ipc.js): the page stays sandboxed
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false },
   });
   win.setMenuBarVisibility(false);
+  // What the player uses, for its own page only: fullscreen, EME (ClearKey), writing the clipboard. The rest (notifications,
+  // camera, handing a link's protocol to another program — openExternal) is refused; every one was granted before.
+  const ALLOW = new Set(['fullscreen', 'mediaKeySystem', 'clipboard-sanitized-write']), page = win.webContents;
+  const own = (wc, u) => !!wc && wc === page && String(u || '').startsWith(`http://127.0.0.1:${port}/`);
+  session.defaultSession.setPermissionRequestHandler((wc, perm, cb, d) => cb(ALLOW.has(perm) && own(wc, d && d.requestingUrl)));
+  session.defaultSession.setPermissionCheckHandler((wc, perm, origin) => ALLOW.has(perm) && own(wc, origin + '/'));
   require('./mpv-ipc').attach(win, `http://127.0.0.1:${port}`);
   // Only real web links go to the OS browser (a dropped file used to arrive as file:///… and open in any player).
   const external = (url) => { if (/^https?:\/\//i.test(url)) shell.openExternal(url); };
