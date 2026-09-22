@@ -335,6 +335,9 @@ function startServer() {
     '.svg': 'image/svg+xml', '.json': 'application/json', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
   const handler = (req, res) => {
     try {
+      // addressed to THIS server by its own address, or refused: a page elsewhere whose name was re-pointed at 127.0.0.1
+      // (DNS rebinding) is same-origin with itself and would pass the Sec-Fetch-Site gate below
+      if (req.headers.host !== '127.0.0.1:' + req.socket.localPort) { res.statusCode = 421; res.end('misdirected'); return; }
       const u = new URL(req.url || '/', 'http://127.0.0.1');
       if (u.pathname === '/probe' || u.pathname === '/seg') {
         // only the player's own page may drive FFmpeg: a browser stamps a request from any other site
