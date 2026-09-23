@@ -176,7 +176,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          A full audit pass. Back stops a stream that is still starting, a film never borrows the last series' name or art, subtitle languages read as names, title pages list the director and writers, and friends are now mutual (both people add each other). The app itself: sharing with your TV no longer drops a paused film, the format converter is ready sooner after launch, the local server answers only this app, and the Linux build relaunches cleanly after an update.
+          Continue watching shows how far in you are on every card, even a few minutes into an episode: the bar sits under the title now, where the card's rounded corner can no longer hide it. Also in 1.81.0: Back stops a stream that is still starting, a film never borrows the last series' name or art, friends are mutual, sharing with your TV keeps a paused film, and the local server answers only this app.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
