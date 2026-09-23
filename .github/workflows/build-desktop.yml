@@ -176,7 +176,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          Continue watching shows how far in you are on every card, even a few minutes into an episode: the bar sits under the title now, where the card's rounded corner can no longer hide it. Also in 1.81.0: Back stops a stream that is still starting, a film never borrows the last series' name or art, friends are mutual, sharing with your TV keeps a paused film, and the local server answers only this app.
+          The shared player's Nuvio-comparison fixes: a search hands the keyboard straight to the results, cards in a row line up, a title with no streams tells you what to do next (add a streaming add-on, or try again), and the pause screen's end time always agrees with the clock. On a TV-sized window the remote stays on the page and whatever it is on wears a clear white ring.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
