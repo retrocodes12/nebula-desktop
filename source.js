@@ -1,7 +1,7 @@
 'use strict';
 // The file the shell's FFmpeg reads, fetched by this process and handed to FFmpeg on loopback.
 //
-// FFmpeg never touches the network itself. The Linux binaries ffmpeg-static / ffprobe-static ship are statically
+// FFmpeg never touches the network itself. The Linux ffmpeg and ffprobe binaries (ffmpeg-static's release) are statically
 // linked against glibc, and a static glibc binary cannot load the system's name-service modules: on Zorin 17 /
 // Ubuntu 22.04 (nsswitch "files mdns4_minimal dns") both crashed with SIGSEGV on the FIRST host-name lookup, so no
 // stream with a name in its address ever reached the converter — Dolby and DTS files played in silence (found

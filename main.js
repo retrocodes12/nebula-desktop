@@ -8,12 +8,17 @@ const relay = require('./relay'), source = require('./source'), { retime } = req
 
 // ---- FFmpeg in the shell: what Chromium cannot decode (Dolby Digital / DTS / TrueHD audio, HEVC without a hardware
 // decoder) is re-encoded on the fly, the rest copied through. The player asks /probe what a file holds, then pulls /seg
-// pieces and appends them itself. Bundled through ffmpeg-static + ffprobe-static (unpacked from the asar); a dev checkout without them falls back to PATH.
+// pieces and appends them itself. Bundled through ffmpeg-static (unpacked from the asar), with ffprobe from the same binary
+// release beside it (scripts/fetch-ffprobe.cjs — ffprobe-static's was FFmpeg 4.0.2 from 2018, parsing whatever an add-on
+// points at); a dev checkout without them falls back to PATH.
 function tool(name) {
   try {
-    const mod = require(name === 'ffmpeg' ? 'ffmpeg-static' : 'ffprobe-static');
-    const p = name === 'ffmpeg' ? mod : mod.path;
-    if (p) return String(p).replace('app.asar' + path.sep, 'app.asar.unpacked' + path.sep);
+    const ff = require('ffmpeg-static');
+    if (ff) {
+      const p = name === 'ffmpeg' ? String(ff) : path.join(path.dirname(String(ff)), process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe');
+      const real = p.replace('app.asar' + path.sep, 'app.asar.unpacked' + path.sep);
+      if (name === 'ffmpeg' || fs.existsSync(real)) return real;
+    }
   } catch (e) {}
   return name;
 }
@@ -29,7 +34,9 @@ const tcRun = (bin) => new Promise((ok) => {
 const tc = { ok: process.env.NEBULA_NO_FFMPEG ? false : null, run: null, again: !process.env.NEBULA_NO_FFMPEG };
 function tcCheck() { if (!tc.run) tc.run = tc.ok !== null ? Promise.resolve(tc.ok) : Promise.all([tcRun(FFMPEG), tcRun(FFPROBE)]).then((v) => (tc.ok = v[0] && v[1])); return tc.run; }
 function tcReady() { if (tc.ok === false && tc.again) { tc.again = false; tc.ok = null; tc.run = null; } return tc.ok !== null ? Promise.resolve(tc.ok) : tcCheck(); }
-ipcMain.handle('tc-available', () => tcReady());   // async: a synchronous answer froze the page for as long as a slow check took
+/** An IPC call from the player's own page — never a frame inside it, nor another window (mpv-ipc.js checks the same). */
+function fromPage(e) { return !!(mainWin && !mainWin.isDestroyed() && e && e.sender === mainWin.webContents && e.senderFrame === mainWin.webContents.mainFrame); }
+ipcMain.handle('tc-available', (e) => (fromPage(e) ? tcReady() : false));   // async: a synchronous answer froze the page for as long as a slow check took
 
 // ---- Share with your TV (relay.js): the read-ahead cache the TV plays through. The page flips it and publishes its address (it holds the credential).
 function relayState(extra) { return Object.assign(relay.info(), { plat: process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'mac' : 'linux' }, extra || {}); }
@@ -39,8 +46,9 @@ function relayStart() {
   const mb = Number(process.env.NEBULA_RELAY_MB);
   return relay.start({ dir: app.getPath('userData'), ua: agent, name: os.hostname(), cap: mb > 0 ? mb * 1048576 : 0 });
 }
-ipcMain.on('relay-info', (event) => { event.returnValue = relayState(); });
-ipcMain.handle('relay-set', async (_event, on) => {
+ipcMain.on('relay-info', (event) => { event.returnValue = fromPage(event) ? relayState() : null; });
+ipcMain.handle('relay-set', async (event, on) => {
+  if (!fromPage(event)) return null;
   try { if (on) await relayStart(); else await relay.stop(); relayPush(); }
   catch (e) { relayPush({ error: String((e && e.message) || e) }); }
   return relayState();
@@ -208,14 +216,20 @@ function getUpdater() {
   return updater;
 }
 const PORTABLE_DIR = PORTABLE_FILE ? path.dirname(PORTABLE_FILE) : '';
+let portableSha = '';                                          // base64 sha512 from latest.yml, '' when the feed carries none
 const feedUrl = (name) => (UPDATE_FEED ? new URL(name, UPDATE_FEED).toString() : `${UPDATE_REPO}/releases/latest/download/${name}`);
 async function portableCheck() {
   updSet({ state: 'checking', error: '' });
   try {
     const r = await net.fetch(feedUrl('latest.yml'), { headers: { 'Cache-Control': 'no-cache' } });
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    const m = /^version:\s*['"]?(\d[^\s'"]*)/m.exec(await r.text());
+    const yml = await r.text();
+    const m = /^version:\s*['"]?(\d[^\s'"]*)/m.exec(yml);
     if (!m) throw new Error('no version in latest.yml');
+    // the release job writes the portable exe's own sha512 beside the installer's (electron-updater ignores the key): the
+    // file this copy replaces itself with must be that exact file, not merely one that arrived whole
+    const h = /^portableSha512:\s*['"]?([A-Za-z0-9+/=]{80,100})/m.exec(yml);
+    portableSha = h ? h[1] : '';
     if (newerVersion(m[1], upd.version)) updSet({ state: 'available', latest: m[1], notes: '' });
     else updSet({ state: 'current', latest: m[1] });
   } catch (e) { updSet({ state: 'error', error: updErrorText(e) }); }
@@ -236,15 +250,18 @@ async function portableDownload() {
     const failed = new Promise((_, no) => out.once('error', no));
     reader = r.body.getReader();
     let got = 0, last = 0;
+    const hash = require('crypto').createHash('sha512');
     while (true) {
       const { done, value } = await Promise.race([reader.read(), failed]);
       if (done) break;
       got += value.length;
+      hash.update(value);
       if (!out.write(Buffer.from(value))) await Promise.race([new Promise((ok) => out.once('drain', ok)), failed]);
       if (Date.now() - last > 250) { last = Date.now(); updSet({ state: 'downloading', percent: total ? Math.min(99, Math.round(got * 100 / total)) : 0, transferred: got, total }); }
     }
     await Promise.race([new Promise((ok) => out.end(ok)), failed]);
     if (total && got !== total) throw new Error('the download stopped short');
+    if (portableSha && hash.digest('base64') !== portableSha) throw new Error('the download does not match the release');
     fs.renameSync(part, dest);
     updSet({ state: 'ready', latest: ver, file: dest, percent: 100, transferred: got, total });
   } catch (e) {
@@ -272,7 +289,9 @@ function portableInstall() {
   // delay is `ping`, because `timeout` refuses to run without a console and this child has none. If the old process
   // is still letting go, the new one keeps asking for the lock for a while (see acquireLock — the .old.exe is its cue).
   try {
-    const child = spawn('cmd.exe', ['/d', '/c', 'ping -n 4 127.0.0.1 >nul & start "" "' + PORTABLE_FILE + '"'],
+    // cmd.exe by its full path: by bare name Windows looks in the current folder first (wherever the exe was started from)
+    const cmd = process.env.ComSpec || path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'cmd.exe');
+    const child = spawn(cmd, ['/d', '/c', 'ping -n 4 127.0.0.1 >nul & start "" "' + PORTABLE_FILE + '"'],
       { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true });
     child.on('error', () => {});   // no shell to start it with: the swap is done, the person opens Nebula as usual
     child.unref();
@@ -307,10 +326,10 @@ function updInstall() {
   setImmediate(() => { try { getUpdater().quitAndInstall(true, true); } catch (e) { delete process.env.NEBULA_RELAUNCH_AT; updSet({ state: 'error', error: updErrorText(e) }); } });
   return upd;
 }
-ipcMain.on('update-info', (event) => { event.returnValue = upd; });
-ipcMain.handle('update-check', () => updCheck(true));
-ipcMain.handle('update-download', () => updDownload());
-ipcMain.handle('update-install', () => updInstall());
+ipcMain.on('update-info', (event) => { event.returnValue = fromPage(event) ? upd : null; });
+ipcMain.handle('update-check', (e) => (fromPage(e) ? updCheck(true) : null));
+ipcMain.handle('update-download', (e) => (fromPage(e) ? updDownload() : null));
+ipcMain.handle('update-install', (e) => (fromPage(e) ? updInstall() : null));
 function updSchedule() {
   if (upd.kind === 'dev') return;
   if (PORTABLE_FILE) { try { fs.unlinkSync(PORTABLE_FILE.replace(/\.exe$/i, '') + '.old.exe'); } catch (e) {} }   // the file we stepped aside from last time
@@ -342,11 +361,10 @@ function startServer() {
       if (req.headers.host !== '127.0.0.1:' + req.socket.localPort) { res.statusCode = 421; res.end('misdirected'); return; }
       const u = new URL(req.url || '/', 'http://127.0.0.1');
       if (u.pathname === '/probe' || u.pathname === '/seg') {
-        // only the player's own page may drive FFmpeg: a browser stamps a request from any other site
-        // (a page open in Chrome aiming at this fixed loopback port) as cross-site / same-site / none,
-        // while a non-browser caller on this machine sends no such header and already has the machine
-        const sfs = String(req.headers['sec-fetch-site'] || '');
-        if (sfs && sfs !== 'same-origin') { res.statusCode = 403; res.end('forbidden'); return; }
+        // only the player's own page may drive FFmpeg, and it always says so: Chromium stamps its own fetches same-origin.
+        // A page elsewhere is stamped cross-site / same-site / none — or, in an older browser, not at all, which used to
+        // pass (2026-09-24: required now). A caller on this machine that sets the header already has the machine.
+        if (String(req.headers['sec-fetch-site'] || '') !== 'same-origin') { res.statusCode = 403; res.end('forbidden'); return; }
         const src = u.searchParams.get('src') || '';
         tcReady().then((ok) => {
           if (!ok) { res.statusCode = 501; res.end('no ffmpeg'); return; }
@@ -428,8 +446,8 @@ async function createWindow() {
     win.setAlwaysOnTop(true, 'floating');
   };
   ipcMain.removeHandler('mini-mode');
-  ipcMain.handle('mini-mode', (_event, on) => {
-    if (win.isDestroyed()) return;
+  ipcMain.handle('mini-mode', (event, on) => {
+    if (win.isDestroyed() || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) return;
     if (on && !savedBounds) {
       // from fullscreen the bounds would be the whole screen: leave it first, then shrink
       if (win.isFullScreen()) { win.once('leave-full-screen', enterMini); win.setFullScreen(false); }
@@ -455,8 +473,8 @@ async function createWindow() {
     setTimeout(() => { if (!win.isDestroyed()) win.destroy(); }, 700);
   });
 
+  mainWin = win;                       // before the page exists: its IPC is answered only when it comes from this window (fromPage)
   win.loadURL(`http://127.0.0.1:${port}/index.html`);
-  mainWin = win;
   updSchedule();
   // sharing that was on when Nebula last closed comes back by itself — the TV keeps the address
   if (relay.wasOn(app.getPath('userData'))) relayStart().then(() => relayPush()).catch((e) => relayPush({ error: String((e && e.message) || e) }));

@@ -6,22 +6,36 @@ on:
     paths-ignore: [ '**.md' ]   # docs-only pushes must not re-cut the release
   workflow_dispatch:
 
+# Read-only unless a job says otherwise: the two build jobs run third-party install scripts (npm) and need nothing but to
+# read the code; only the release job, which runs none, writes. Every action is pinned by commit (2026-09-24).
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '20'
+          node-version: '22'   # Electron 44's package asks for Node 22.12 or newer
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund   # exactly the lockfile
+
+      # ffprobe from ffmpeg-static's own binary release, pinned by sha256, beside the ffmpeg it installed
+      # (ffprobe-static's binaries were FFmpeg 4.0.2 from 2018)
+      - name: Fetch ffprobe
+        run: node scripts/fetch-ffprobe.cjs
+
+      # since Electron 42 the package no longer downloads its binary on install; the smoke test below runs it, so fetch
+      # it here (Electron's own installer, checked against the package's checksums.json)
+      - name: Fetch the Electron binary
+        run: node node_modules/electron/install.js
 
       # libmpv for the full-format player (mpv.js): the baseline x86-64 build (the -v3 ones need AVX2), pinned by its hash
       - name: Fetch libmpv (Windows)
@@ -63,8 +77,11 @@ jobs:
         run: |
           ls -la dist/
           test -f dist/latest.yml || { echo "latest.yml missing: the updater would have nothing to read"; exit 1; }
+          # the portable copy updates itself from its own download: it checks that file against this sha512 (main.js)
+          node -e "const fs=require('fs');const h=require('crypto').createHash('sha512').update(fs.readFileSync('dist/Nebula-Portable.exe')).digest('base64');fs.appendFileSync('dist/latest.yml','portableSha512: '+h+'\n');console.log('portableSha512',h)"
+          cat dist/latest.yml
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows
           path: |
@@ -76,15 +93,27 @@ jobs:
   linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '20'
+          node-version: '22'   # Electron 44's package asks for Node 22.12 or newer
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund   # exactly the lockfile
+
+      # ffprobe from ffmpeg-static's own binary release, pinned by sha256, beside the ffmpeg it installed
+      # (ffprobe-static's binaries were FFmpeg 4.0.2 from 2018)
+      - name: Fetch ffprobe
+        run: node scripts/fetch-ffprobe.cjs
+
+      # since Electron 42 the package no longer downloads its binary on install; the smoke test below runs it, so fetch
+      # it here (Electron's own installer, checked against the package's checksums.json)
+      - name: Fetch the Electron binary
+        run: node node_modules/electron/install.js
 
       # libmpv for the full-format player: Ubuntu 22.04's build plus the two libraries a stock system may lack, carried by the
       # AppImage and the deb (a system's own libmpv2 or libmpv1 is tried first), pinned by their hashes
@@ -145,7 +174,7 @@ jobs:
           grep -q "Nebula.AppImage" dist/latest-linux.yml || { echo "the AppImage is not in latest-linux.yml"; exit 1; }
           grep -q "Nebula.deb" dist/latest-linux.yml || { echo "the deb is not in latest-linux.yml"; exit 1; }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: linux
           path: |
@@ -158,10 +187,14 @@ jobs:
     needs: [ windows, linux ]
     if: github.ref == 'refs/heads/main'   # a run started on another branch (workflow_dispatch) builds and tests both, never releases
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: out
 
@@ -176,7 +209,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          Title pages have a Universe row: what a film or show follows, what follows it, its spin-offs and what it spun off from, and its remakes, each card labelled with how it is connected. Open one to see its page; Back brings you to the title you came from.
+          A security update. Nebula now runs on a supported, current version of its desktop engine (the old one had stopped receiving fixes), and the file reader it uses on streams it cannot play directly is up to date. Sharing with your TV reaches only the internet, never other devices on your network; add-ons and watch parties can only point the player at web addresses; invite links and TV sign-in codes wait for you to confirm.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \

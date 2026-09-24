@@ -1,6 +1,6 @@
 {
   "name": "clearkey-player",
-  "version": "1.82.0",
+  "version": "1.83.0",
   "description": "Nebula — add an add-on, browse it, press play. Every format, on-device.",
   "main": "main.js",
   "author": "Nebula",
@@ -12,8 +12,8 @@
     "dist:linux": "electron-builder --linux --publish never"
   },
   "devDependencies": {
-    "electron": "^31.7.6",
-    "electron-builder": "^24.13.3"
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3"
   },
   "build": {
     "appId": "com.nuvio.clearkey.player",
@@ -56,9 +56,7 @@
         "retime.js",
         "mpv-ipc.js",
         "mpv-host.js",
-        "renderer/**/*",
-        "!node_modules/ffprobe-static/bin/{darwin,linux}/**",
-        "!node_modules/ffprobe-static/bin/win32/ia32/**"
+        "renderer/**/*"
       ],
       "extraResources": [
         {
@@ -99,8 +97,10 @@
       "description": "Nebula plays what your add-ons offer: catalogs, films and series, subtitles, and encrypted streams decrypted on the device. Files this build cannot decode on its own are converted as they play.",
       "artifactName": "Nebula.${ext}",
       "desktop": {
-        "Keywords": "video;player;streaming;",
-        "StartupWMClass": "clearkey-player"
+        "entry": {
+          "Keywords": "video;player;streaming;",
+          "StartupWMClass": "clearkey-player"
+        }
       },
       "files": [
         "main.js",
@@ -110,15 +110,16 @@
         "retime.js",
         "mpv-ipc.js",
         "mpv-host.js",
-        "renderer/**/*",
-        "!node_modules/ffprobe-static/bin/{darwin,win32}/**",
-        "!node_modules/ffprobe-static/bin/linux/ia32/**"
+        "renderer/**/*"
       ],
       "extraResources": [
         {
           "from": "build/mpv/linux",
           "to": "mpv"
         }
+      ],
+      "executableArgs": [
+        "--ozone-platform=x11"
       ]
     },
     "deb": {
@@ -138,8 +139,7 @@
       ]
     },
     "asarUnpack": [
-      "node_modules/ffmpeg-static/**",
-      "node_modules/ffprobe-static/**"
+      "node_modules/ffmpeg-static/**"
     ],
     "publish": {
       "provider": "github",
@@ -149,7 +149,6 @@
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
-    "ffmpeg-static": "^5.3.0",
-    "ffprobe-static": "^3.1.0"
+    "ffmpeg-static": "^5.3.0"
   }
 }

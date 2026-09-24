@@ -65,8 +65,16 @@ function tokenOk(k) {
 /** Loopback, unspecified and link-local: what exists for this machine alone. Other private ranges are the LAN itself. */
 function privateTarget(addr) {
   if (process.env.NEBULA_RELAY_ALLOW_LOOPBACK === '1') return false;     // the rigs' upstream lives on this machine
-  const a = String(addr || '').replace(/^::ffff:/i, '');
-  return !a || /^127\./.test(a) || /^0\./.test(a) || a === '::1' || a === '::' || /^169\.254\./.test(a) || /^fe[89ab][0-9a-f]:/i.test(a);
+  const a = String(addr || '').replace(/^::ffff:/i, '').toLowerCase();
+  if (!a || lanHosts().indexOf(a) >= 0) return true;                     // this machine, by any of its addresses
+  // The relay fetches the internet for a TV. It must never be a way into what only this PC can reach — the LAN's router
+  // and NAS, a docker bridge, a VPN or Tailscale peer — for whoever holds the token (a token the cloud, every signed-in
+  // client and the LAN's plain-http URLs all carry). A TV reaches its own network itself. (2026-09-24 security pass.)
+  if (/^(127|0|10)\./.test(a) || /^169\.254\./.test(a) || /^192\.168\./.test(a) || /^172\.(1[6-9]|2\d|3[01])\./.test(a)) return true;
+  const c = /^100\.(\d+)\./.exec(a);
+  if (c && +c[1] >= 64 && +c[1] <= 127) return true;                        // carrier-grade NAT, Tailscale
+  if (/^(22[4-9]|2[3-5]\d)\./.test(a) || /^192\.0\.0\./.test(a) || /^198\.1[89]\./.test(a)) return true;   // multicast, reserved, benchmarking
+  return a === '::1' || a === '::' || /^f[cd]/.test(a) || /^fe[89ab]/.test(a) || /^ff/.test(a);          // loopback, ULA, link-local, multicast
 }
 /** This server itself: an address that came back here would have us fetching our own cache, hop after hop. */
 function selfTarget(addr, prt) {
@@ -475,4 +483,4 @@ function stop() {
   sockets.forEach((k) => { try { k.destroy(); } catch (e) {} }); sockets.clear();
   return new Promise((ok) => s.close(() => ok(info())));
 }
-module.exports = { start, stop, info, wasOn, CHUNK, _familyOf: familyOf };
+module.exports = { start, stop, info, wasOn, CHUNK, _familyOf: familyOf, _privateTarget: privateTarget };
