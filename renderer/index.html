@@ -2574,7 +2574,7 @@
   var statusEl = document.getElementById('status');
   var LS = window.localStorage;
   var player = null, viewStack = ['home'], ctx = {};
-  var PLAYER_VERSION = '2026.09.25.1';
+  var PLAYER_VERSION = '2026.09.25.2';
 
   // Where our own site files (pair.html, party.json, player-version.json) live.
   // Served over http(s) the player is self-contained — any mirror works from its
@@ -8385,6 +8385,7 @@
       shadowArm();                       // a frame source for the scrub preview, when this stream allows one
       // ask the subtitle add-ons what they have for this title (candidates only —
       // nothing is downloaded until one is picked)
+      subState.innerReady = innerStart(seq, rawUrl);   // a plain file's own subtitle tracks (Matroska), which the engine never lists
       if (curPlay && curPlay.type && curPlay.id) loadAddonSubs(curPlay.type, curPlay.id, seq);
       // add-on-provided subtitle files become selectable text tracks (subAuto waits for them before it looks)
       var streamSubs = [];
@@ -8497,10 +8498,10 @@
   // is gained by hiding any: the caps only guard against a runaway add-on (four per language cut real choices, 09-11).
   var SUB_PER_LANG = 40, SUB_MAX = 400;
   // hand = a count of the viewer's own subtitle choices this play (an autoload download that finds it moved stands down)
-  var subState = { seq:0, loading:false, asked:0, list:[], loaded:{}, urls:[], trackSrc:{}, hand:0, streamReady:null };
+  var subState = { seq:0, loading:false, asked:0, list:[], loaded:{}, urls:[], trackSrc:{}, hand:0, streamReady:null, inner:[], innerReady:null };
   function resetSubs(){
     subState.urls.forEach(function(u){ try { URL.revokeObjectURL(u); } catch(e){} });
-    subState = { seq:0, loading:false, asked:0, list:[], loaded:{}, urls:[], trackSrc:{}, hand:0, streamReady:null };
+    subState = { seq:0, loading:false, asked:0, list:[], loaded:{}, urls:[], trackSrc:{}, hand:0, streamReady:null, inner:[], innerReady:null };
   }
   // the viewer's last subtitle choice and the title it was made on ({id, url} — url = the add-on file picked, '' = Off or a
   // stream track): the autoload never overrides it on that title, and a picked file comes back after a source swap
@@ -8577,7 +8578,7 @@
     return out.slice(0, SUB_MAX);
   }
   async function loadAddonSubs(type, id, seq){
-    subState.seq = seq; subState.loading = true; subState.asked = 0; subState.list = [];
+    subState.seq = seq; subState.loading = true; subState.asked = 0; subState.list = (subState.inner || []).slice();   // the file's own tracks stay
     var addons = activeAddons(), out = [];
     for (var i = 0; i < addons.length; i++){
       var a = addons[i];
@@ -8595,7 +8596,7 @@
     }
     if (seq !== subState.seq) return;
     subState.loading = false;
-    subState.list = rankSubs(out);
+    subState.list = (subState.inner || []).concat(rankSubs(out));
     // if the panel is up saying “Searching…”, fill it in place (focus stays put)
     if (puiState.menu === 'subs') subPanelRender(true);
     subAuto(seq);
@@ -8608,6 +8609,7 @@
       Once per play, and never over the viewer's own choice on this title. */
   async function subAuto(seq){
     try { await subState.streamReady; } catch(e){}
+    try { await Promise.race([subState.innerReady, new Promise(function(ok){ setTimeout(ok, 8000); })]); } catch(e){}
     if (!player || seq !== playSeq) return;
     var h0 = subState.hand;
     if (h0) return;
@@ -8643,7 +8645,7 @@
         puiRefreshButtons(); if (puiState.menu === 'subs') subPanelRender(true);
         return;
       }
-      var files = subState.list.filter(function(c){ return !subState.loaded[c.url] && subKey(c.lang) === k; }).slice(0, 3);
+      var files = subState.list.filter(function(c){ return !subState.loaded[c.url] && !c.forced && subKey(c.lang) === k; }).slice(0, 3);
       if (files.length && await tryFiles(files)) return;
       if (!player || seq !== playSeq || subState.hand !== h0) return;
     }
@@ -8673,6 +8675,265 @@
     subState.urls.push(u);
     return { url:u, mime:mime };
   }
+  // ---- built-in subtitles of a Matroska file (2026.09.25.2) ----
+  // A TV's and a browser's engine play a file's picture and sound but never list the subtitle tracks inside it (the
+  // Founder's LG with a PenguPlay episode his phone shows subtitles for). A file made by mkvmerge — nearly every release;
+  // 6 of 6 complete files on this laptop, and an FFmpeg-made one too — indexes every subtitle line with its exact place,
+  // so the tracks are read here with small range requests: the header, the index (Cues), then one ~8 KB piece per line,
+  // the lines around the playhead first. The host is asked straight; one that will not answer this page goes through the
+  // cloud (/v1/ranges: pieces only, never the file). Picture subtitles (PGS, VobSub) and compressed tracks are not read.
+  var MKV_ID = { EBML: 0x1A45DFA3, SEGMENT: 0x18538067, SEEKHEAD: 0x114D9B74, SEEK: 0x4DBB, SEEKID: 0x53AB, SEEKPOS: 0x53AC,
+    INFO: 0x1549A966, TSCALE: 0x2AD7B1, TRACKS: 0x1654AE6B, TRACK: 0xAE, TNUM: 0xD7, TTYPE: 0x83, CODEC: 0x86, LANG: 0x22B59C,
+    LANGBCP: 0x22B59D, NAME: 0x536E, FFORCED: 0x55AA, ENCODINGS: 0x6D80, CUES: 0x1C53BB6B, CUEPOINT: 0xBB, CUETIME: 0xB3,
+    CUEPOS: 0xB7, CUETRACK: 0xF7, CUECLUSTER: 0xF1, CUEREL: 0xF0, CUEDUR: 0xB2, CLUSTER: 0x1F43B675, BLOCKGROUP: 0xA0,
+    BLOCK: 0xA1, SIMPLEBLOCK: 0xA3, BLOCKDUR: 0x9B };
+  var MKV_TEXT = { 'S_TEXT/UTF8': 'srt', 'S_TEXT/ASCII': 'srt', 'S_TEXT/ASS': 'ass', 'S_TEXT/SSA': 'ass', 'S_TEXT/WEBVTT': 'vtt', 'D_WEBVTT/SUBTITLES': 'vtt' };
+  function mkvVint(b, p, keep){
+    var first = b[p]; if (first === undefined) return null;
+    var len = 1, mask = 0x80;
+    while (len <= 8 && !(first & mask)){ len++; mask >>= 1; }
+    if (len > 8 || p + len > b.length) return null;
+    var v = keep ? first : (first & (mask - 1)), ones = (first & (mask - 1)) === mask - 1;
+    for (var i = 1; i < len; i++){ v = v * 256 + b[p + i]; if (b[p + i] !== 255) ones = false; }
+    return { v: v, len: len, unknown: !keep && ones };
+  }
+  /** The element at p: {id, size (−1 unknown), data, end}, or null when its header does not fit in b. */
+  function mkvEl(b, p){
+    var id = mkvVint(b, p, true); if (!id) return null;
+    var sz = mkvVint(b, p + id.len, false); if (!sz) return null;
+    var data = p + id.len + sz.len;
+    return { id: id.v, size: sz.unknown ? -1 : sz.v, data: data, end: sz.unknown ? -1 : data + sz.v };
+  }
+  function mkvUint(b, s, e){ var v = 0; for (var i = s; i < e; i++) v = v * 256 + b[i]; return v; }
+  function mkvStr(b, s, e){ var t = ''; try { t = new TextDecoder('utf-8').decode(b.subarray(s, e)); } catch(x){} return t.replace(/\u0000+$/, ''); }
+  function mkvKids(b, s, e){
+    var out = [], p = s;
+    while (p < e){ var el = mkvEl(b, p); if (!el || el.end < 0 || el.end > e) break; out.push(el); p = el.end; }
+    return out;
+  }
+  function mkvTracks(b, s, e){
+    return mkvKids(b, s, e).filter(function(k){ return k.id === MKV_ID.TRACK; }).map(function(te){
+      var t = { num: 0, type: 0, codec: '', lang: 'eng', bcp: '', name: '', forced: false, compressed: false };
+      mkvKids(b, te.data, te.end).forEach(function(k){
+        if (k.id === MKV_ID.TNUM) t.num = mkvUint(b, k.data, k.end);
+        else if (k.id === MKV_ID.TTYPE) t.type = mkvUint(b, k.data, k.end);
+        else if (k.id === MKV_ID.CODEC) t.codec = mkvStr(b, k.data, k.end);
+        else if (k.id === MKV_ID.LANG) t.lang = mkvStr(b, k.data, k.end);
+        else if (k.id === MKV_ID.LANGBCP) t.bcp = mkvStr(b, k.data, k.end);
+        else if (k.id === MKV_ID.NAME) t.name = mkvStr(b, k.data, k.end);
+        else if (k.id === MKV_ID.FFORCED) t.forced = !!mkvUint(b, k.data, k.end);
+        else if (k.id === MKV_ID.ENCODINGS) t.compressed = true;
+      });
+      t.kind = MKV_TEXT[t.codec] || '';
+      return t;
+    });
+  }
+  /** The file's readable subtitle tracks, each with where its lines are: {scale, tracks:[{num, kind, lang, name, forced, points:[{t, cluster, rel, dur}]}]}. */
+  async function mkvIndex(read){
+    var head = await read(0, 262144);
+    var ebml = mkvEl(head, 0); if (!ebml || ebml.id !== MKV_ID.EBML) throw new Error('not matroska');
+    var seg = mkvEl(head, ebml.end); if (!seg || seg.id !== MKV_ID.SEGMENT) throw new Error('no segment');
+    var segStart = seg.data, scale = 1000000, tracks = null, cuesAt = -1, tracksAt = -1, infoAt = -1, gotInfo = false, p;
+    async function elAt(pos, cap){
+      var buf = await read(pos, pos + 65536);
+      var el = mkvEl(buf, 0); if (!el || el.end < 0) return null;
+      if (el.end > buf.length){ if (el.end > (cap || 4194304)) return null; buf = await read(pos, pos + el.end); }
+      return { el: el, buf: buf };
+    }
+    function info(b, el){ mkvKids(b, el.data, el.end).forEach(function(k){ if (k.id === MKV_ID.TSCALE) scale = mkvUint(b, k.data, k.end); }); }
+    for (p = segStart; p < head.length; ){
+      var el = mkvEl(head, p);
+      if (!el || el.id === MKV_ID.CLUSTER || el.size < 0) break;
+      if (el.end <= head.length){
+        if (el.id === MKV_ID.SEEKHEAD){
+          mkvKids(head, el.data, el.end).forEach(function(s){
+            if (s.id !== MKV_ID.SEEK) return;
+            var sid = 0, spos = -1;
+            mkvKids(head, s.data, s.end).forEach(function(k){
+              if (k.id === MKV_ID.SEEKID) sid = mkvUint(head, k.data, k.end);
+              if (k.id === MKV_ID.SEEKPOS) spos = mkvUint(head, k.data, k.end);
+            });
+            if (spos < 0) return;
+            if (sid === MKV_ID.CUES) cuesAt = segStart + spos;
+            else if (sid === MKV_ID.TRACKS) tracksAt = segStart + spos;
+            else if (sid === MKV_ID.INFO) infoAt = segStart + spos;
+          });
+        }
+        else if (el.id === MKV_ID.INFO){ gotInfo = true; info(head, el); }
+        else if (el.id === MKV_ID.TRACKS) tracks = mkvTracks(head, el.data, el.end);
+      }
+      if (el.id === MKV_ID.CUES) cuesAt = p;
+      p = el.end;
+    }
+    if (!tracks && tracksAt >= 0){ var tk = await elAt(tracksAt); if (tk && tk.el.id === MKV_ID.TRACKS) tracks = mkvTracks(tk.buf, tk.el.data, tk.el.end); }
+    if (!gotInfo && infoAt >= 0){ var inf = await elAt(infoAt); if (inf && inf.el.id === MKV_ID.INFO) info(inf.buf, inf.el); }
+    var subs = (tracks || []).filter(function(t){ return t.type === 0x11 && t.kind && !t.compressed; });
+    if (!subs.length || cuesAt < 0) return { scale: scale, tracks: [] };
+    var c = await elAt(cuesAt, 8388608);
+    if (!c || c.el.id !== MKV_ID.CUES) return { scale: scale, tracks: [] };
+    var byNum = {}; subs.forEach(function(t){ t.points = []; byNum[t.num] = t; });
+    mkvKids(c.buf, c.el.data, c.el.end).forEach(function(cp){
+      if (cp.id !== MKV_ID.CUEPOINT) return;
+      var time = 0;
+      mkvKids(c.buf, cp.data, cp.end).forEach(function(k){
+        if (k.id === MKV_ID.CUETIME){ time = mkvUint(c.buf, k.data, k.end); return; }
+        if (k.id !== MKV_ID.CUEPOS) return;
+        var q = { track: 0, cluster: -1, rel: -1, dur: 0 };
+        mkvKids(c.buf, k.data, k.end).forEach(function(x){
+          var v = mkvUint(c.buf, x.data, x.end);
+          if (x.id === MKV_ID.CUETRACK) q.track = v; else if (x.id === MKV_ID.CUECLUSTER) q.cluster = v;
+          else if (x.id === MKV_ID.CUEREL) q.rel = v; else if (x.id === MKV_ID.CUEDUR) q.dur = v;
+        });
+        var t = byNum[q.track];
+        if (t && q.cluster >= 0 && q.rel >= 0) t.points.push({ t: time, cluster: segStart + q.cluster, rel: q.rel, dur: q.dur });
+      });
+    });
+    // a track the index only partly covers (an FFmpeg-made file indexes video keyframes only) cannot be read this way
+    return { scale: scale, tracks: subs.filter(function(t){ return t.points.length >= 5; }) };
+  }
+  /** Where a line's piece is: its place counts from the cluster's DATA (after the cluster's own id and 1–8 byte size), so
+      one read from 5 bytes in covers every header length, and the block that parses there is the one. */
+  function mkvPiece(pt){ var a = pt.cluster + pt.rel + 5; return [a, a + 8 + 8192]; }
+  function mkvBlockAt(buf, pt, num){
+    for (var h = 5; h <= 12 && buf; h++){
+      var el = mkvEl(buf, h - 5);
+      if (!el || (el.id !== MKV_ID.BLOCKGROUP && el.id !== MKV_ID.SIMPLEBLOCK) || el.end < 0 || el.end > buf.length) continue;
+      var blk = null, dur = pt.dur;
+      if (el.id === MKV_ID.BLOCKGROUP){
+        mkvKids(buf, el.data, el.end).forEach(function(k){
+          if (k.id === MKV_ID.BLOCK) blk = k;
+          if (k.id === MKV_ID.BLOCKDUR) dur = mkvUint(buf, k.data, k.end);
+        });
+      } else blk = el;
+      if (!blk) continue;
+      var tn = mkvVint(buf, blk.data, false);
+      if (!tn || tn.v !== num) continue;
+      return { t: pt.t, dur: dur, text: mkvStr(buf, blk.data + tn.len + 3, blk.end) };   // track number, 16-bit time, flags
+    }
+    return null;
+  }
+  /** A line as WebVTT cue text: ASS's fields and override tags gone, only <i> <b> <u> kept, the rest escaped. */
+  function innerText(kind, raw){
+    var t = String(raw || '').replace(/\r/g, '');
+    if (kind === 'ass'){ var f = t.split(','); t = f.length > 8 ? f.slice(8).join(',') : t; t = t.replace(/\\N/gi, '\n'); }
+    t = t.replace(/\{[^}]*\}/g, '').replace(/<(?!\/?[ibu]>)[^>]*>/gi, '').replace(/&(?![a-z#0-9]+;)/gi, '&amp;').replace(/<(?!\/?[ibu]>)/gi, '&lt;');
+    return t.replace(/\n{2,}/g, '\n').trim();
+  }
+  /** Reads [s, e) of a file: straight from the host (through the sharing computer when the TV plays through one), else
+      through the cloud's /v1/ranges — decided on the first read and kept. */
+  function innerReader(url){
+    var rd = { via: 'direct', target: url };
+    if (ctx.viaRelay && relayLive === ctx.viaRelay && relayWorth(url)) rd.target = relayUrl(url);
+    async function one(s, e){
+      var ctl = new AbortController(), timer = setTimeout(function(){ ctl.abort(); }, 15000);
+      try {
+        var r = await fetch(rd.target, { headers: { Range: 'bytes=' + s + '-' + (e - 1) }, signal: ctl.signal });
+        if (r.status !== 206){ ctl.abort(); return null; }       // a 200 is the whole film: never read it
+        return new Uint8Array(await r.arrayBuffer());
+      } catch(err){ return null; } finally { clearTimeout(timer); }
+    }
+    async function cloud(list){
+      var q = list.map(function(x){ return x[0] + '-' + (x[1] - 1); }).join(',');
+      var r = await fetch(CLOUD_BASE + '/v1/ranges?u=' + encodeURIComponent(url) + '&r=' + q);
+      if (!r.ok) throw new Error('ranges ' + r.status);
+      var b = new Uint8Array(await r.arrayBuffer()), out = [], p = 0;
+      for (var i = 0; i < list.length && p + 4 <= b.length; i++){
+        var n = b[p] * 16777216 + (b[p + 1] << 16) + (b[p + 2] << 8) + b[p + 3]; p += 4;
+        out.push(n ? b.subarray(p, p + n) : null); p += n;
+      }
+      return out;
+    }
+    rd.read = async function(s, e){
+      if (rd.via === 'direct'){ var d = await one(s, e); if (d) return d; rd.via = 'cloud'; }
+      return (await cloud([[s, e]]))[0] || new Uint8Array(0);
+    };
+    /** many pieces, in order: six at a time straight, or 48 to a cloud request, two in flight */
+    rd.many = async function(list){
+      var out = new Array(list.length), i = 0;
+      if (rd.via === 'direct'){
+        var missed = [];
+        await Promise.all([0, 1, 2, 3, 4, 5].map(async function(){
+          while (i < list.length){ var k = i++; out[k] = await one(list[k][0], list[k][1]); if (!out[k]) missed.push(k); }
+        }));
+        if (!missed.length) return out;
+        rd.via = 'cloud';
+        var again = await rd.many(missed.map(function(k){ return list[k]; }));
+        missed.forEach(function(k, j){ out[k] = again[j]; });
+        return out;
+      }
+      var chunks = [];
+      for (var s = 0; s < list.length; s += 48) chunks.push(s);
+      await Promise.all([0, 1].map(async function(){
+        while (chunks.length){
+          var at = chunks.shift(), part = await cloud(list.slice(at, at + 48)).catch(function(){ return []; });
+          for (var j = 0; j < 48 && at + j < list.length; j++) out[at + j] = part[j] || null;
+        }
+      }));
+      return out;
+    };
+    return rd;
+  }
+  var inner = { seq: -1, rd: null };
+  /** After a plain file starts: its built-in subtitle tracks become candidates in the panel ("Built in"). */
+  function innerStart(seq, url){
+    if (mp || !/^https?:\/\//i.test(url || '') || /\.(mpd|m3u8?)(\?|#|$)/i.test(url)) return Promise.resolve();
+    var rd = innerReader(url);
+    inner = { seq: seq, rd: rd };
+    return mkvIndex(rd.read).then(function(idx){
+      if (seq !== playSeq || !idx.tracks.length) return;
+      var seen = {};
+      var cands = idx.tracks.map(function(t){
+        var lang = t.bcp || t.lang || 'und', n = langName(lang) || lang;
+        var label = n + (t.forced || /forced/i.test(t.name) ? ' · Forced' : (/sdh|hearing|\bcc\b/i.test(t.name) ? ' · SDH' : ''));
+        seen[label] = (seen[label] || 0) + 1;
+        if (seen[label] > 1) label += ' ' + seen[label];
+        return { url: 'mkv:' + t.num + ':' + url, lang: lang, name: label, label: label, addon: 'Built in', forced: t.forced || /forced/i.test(t.name),
+          mkv: { t: t, scale: idx.scale / 1e9 } };
+      });
+      subState.inner = cands;
+      subState.list = cands.concat(subState.list.filter(function(c){ return !c.mkv; }));
+      if (puiState.menu === 'subs') subPanelRender(true);
+    }).catch(function(){});
+  }
+  /** Lines of a track at these index points → [{s, e, text}] in time order (durations missing → up to the next line, ≤ 5 s). */
+  async function innerLines(c, pts){
+    var t = c.mkv.t, sc = c.mkv.scale;
+    var bufs = await inner.rd.many(pts.map(mkvPiece)), out = [];
+    pts.forEach(function(pt, i){
+      var b = mkvBlockAt(bufs[i], pt, t.num); if (!b) return;
+      var text = innerText(t.kind, b.text); if (!text) return;
+      out.push({ s: b.t * sc, e: b.dur ? (b.t + b.dur) * sc : 0, text: text });
+    });
+    out.sort(function(a, b){ return a.s - b.s; });
+    out.forEach(function(l, i){ if (!l.e) l.e = Math.min(l.s + 5, i + 1 < out.length ? out[i + 1].s : l.s + 5); });
+    return out;
+  }
+  function vttTime(s){ var h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = s % 60; return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m + ':' + (x < 10 ? '0' : '') + x.toFixed(3); }
+  /** The lines around the playhead as a file the engine can take; the rest follows on the track (innerRest). */
+  async function innerBlob(c){
+    var sc = c.mkv.scale, now = video.currentTime || 0, pts = c.mkv.t.points.slice();
+    pts.sort(function(a, b){ return Math.abs(a.t * sc - now - 60) - Math.abs(b.t * sc - now - 60); });
+    var first = pts.filter(function(p){ var s = p.t * sc; return s > now - 20 && s < now + 240; });
+    if (first.length < 20) first = pts.slice(0, 40);
+    var lines = await innerLines(c, first);
+    if (!lines.length) return null;
+    var taken = {}; first.forEach(function(p){ taken[p.t] = 1; });
+    var text = 'WEBVTT\n\n' + lines.map(function(l){ return vttTime(l.s) + ' --> ' + vttTime(l.e) + '\n' + l.text; }).join('\n\n') + '\n';
+    var u = URL.createObjectURL(new Blob([text], { type: 'text/vtt' }));
+    subState.urls.push(u);
+    return { url: u, mime: 'text/vtt', rest: pts.filter(function(p){ return !taken[p.t]; }) };
+  }
+  /** The rest of a built-in track, nearest first, added to the showing track as it arrives. */
+  async function innerRest(c, rest, seq){
+    for (var i = 0; i < rest.length; i += 96){
+      if (seq !== playSeq || !player) return;
+      var lines = await innerLines(c, rest.slice(i, i + 96));
+      var tr = null;
+      for (var k = 0; k < video.textTracks.length; k++) if (video.textTracks[k].label === c.label) tr = video.textTracks[k];
+      if (!tr) return;
+      lines.forEach(function(l){ try { tr.addCue(new VTTCue(l.s, l.e, l.text)); } catch(e){} });
+    }
+  }
   /** [autoAt]: the autoload's pick, made when the viewer's choice count stood at that number — quiet, and it stands
       down if they choose meanwhile. Resolves true when the file is showing. */
   async function pickAddonSub(c, autoAt){
@@ -8682,7 +8943,9 @@
     var seq = playSeq;
     function stale(){ return !player || seq !== playSeq || (auto && subState.hand !== autoAt); }
     try {
-      var blob = await fetchSubBlob(c.url);
+      if (c.mkv && !auto) setStatus('Reading the subtitles inside the file…', 'info');
+      var blob = c.mkv ? await innerBlob(c) : await fetchSubBlob(c.url);
+      if (!blob) throw new Error('empty');
       if (stale()) return false;
       var track = await player.addTextTrackAsync(blob.url, c.lang, 'subtitles', blob.mime, '', c.label);
       if (stale()) return false;
@@ -8693,6 +8956,7 @@
       }
       if (track) player.selectTextTrack(track);
       player.setTextTrackVisibility(true);
+      if (blob.rest && blob.rest.length) innerRest(c, blob.rest, seq);   // the rest of the file's lines, nearest first
       if (!auto) setStatus('Subtitles: ' + c.label, 'ok');
       puiRefreshButtons();
       if (puiState.menu === 'subs') subPanelRender(true);   // the panel stays up; the card is now a track
@@ -9373,6 +9637,11 @@
   // Two ways to hear: the browser listens to the playing video (a streaming engine's sound, or a file on this site), or
   // the desktop shell's FFmpeg reads the same file ahead of the playhead (/speech) — seconds, and any engine.
   var SS_HZ = 100, SS_STEP = 30, SS_MIN = 60, SS_MAX = 360, SS_AGREE = 3, SS_Z = 4, SS_RATIO = 1.3, SS_LAG = 0;
+  // ±20 s: an add-on file is seconds off, rarely more — every second searched past that is one more chance of a coincidence
+  // (the Mentalist's wrong answers sat 41–57 s away). Following (after the first answer, while listening): the last 5
+  // minutes, around the timing now, at its speed; a looser bar, since only a small move near the last answer is possible —
+  // a file cut from another broadcast steps a few seconds at each ad break (the Mentalist: +1 → +3 → +6.5 → +10 → +13 s)
+  var SS_RANGE = 20, SS_FOLLOW_W = 300, SS_FZ = 3.5, SS_FTOL = 0.6;
   var ss = null;                                  // the sync in progress
   function ssVadNew(sr){
     // voice band: RBJ biquads, high-pass 300 Hz then low-pass 3000 Hz, Q 0.707
@@ -9421,7 +9690,7 @@
    * speech {t0, vals}: energies at SS_HZ from media second t0, NaN where nothing was heard. cues: [[start, end]] in the
    * file's own times. → {off, scale, z, ratio} (shown = file time × scale + off), or null when there is too little to go on.
    */
-  function ssSolve(speech, cues){
+  function ssSolve(speech, cues, fol){
     var vals = speech.vals, n = vals.length, t0 = speech.t0, i;
     var heard = [];
     for (i = 0; i < n; i++) if (vals[i] === vals[i]) heard.push(vals[i]);
@@ -9444,16 +9713,21 @@
       }
       P[i + 1] = P[i] + d;                          // prefix sums: a line's score is two lookups
     }
-    var tEnd = t0 + n / SS_HZ, range = 60, m = range * SS_HZ, step = 1 / SS_HZ, best = null, one = null;
-    [1, 25 / 23.976, 23.976 / 25].forEach(function(sc){
+    var tEnd = t0 + n / SS_HZ, range = SS_RANGE, m = range * SS_HZ, step = 1 / SS_HZ, best = null, one = null, base = fol ? fol.around : 0;
+    (fol ? [fol.scale] : [1, 25 / 23.976, 23.976 / 25]).forEach(function(sc){
       var sel = [], k, c;
       for (c = 0; c < cues.length; c++){
-        var a = cues[c][0] * sc, b = cues[c][1] * sc;   // a speed mismatch pivots on the film's start: both begin together
+        var a = cues[c][0] * sc + base, b = cues[c][1] * sc + base;   // a speed mismatch pivots on the film's start: both begin together
         if (b + range > t0 && a - range < tEnd) sel.push([a, b]);
       }
       if (sel.length < 8) return;
+      // a film-speed mismatch starts in step with the film, so its offset is small: a stretch with a big offset is only a
+      // plain shift in disguise near the start, and one more chance of a coincidence — the Founder's Mentalist S4E2 on his
+      // phone (09-25): −53.5 s at 25/23.976 twice, one agreeing try short of being applied
+      var mk = (sc === 1 || fol) ? m : Math.min(m, 10 * SS_HZ), lo0 = m - mk, hi0 = m + mk;
       var scores = new Float64Array(2 * m + 1);
       for (k = -m; k <= m; k++){
+        if (k < -mk || k > mk){ scores[k + m] = -1e18; continue; }
         var sh = k * step, s = 0;
         for (c = 0; c < sel.length; c++){
           var ia = Math.round((sel[c][0] + sh - t0) * SS_HZ), ib = Math.round((sel[c][1] + sh - t0) * SS_HZ);
@@ -9464,12 +9738,12 @@
       }
       // the peak, how far it stands above the whole search, and the best rival more than 1.5 s away
       var bk = 0, bs = -1e18, mu = 0, sd = 0, rival = -1e18, gap = 1.5 * SS_HZ;
-      for (k = 0; k <= 2 * m; k++){ mu += scores[k]; if (scores[k] > bs){ bs = scores[k]; bk = k; } }
-      mu /= scores.length;
-      for (k = 0; k <= 2 * m; k++) sd += (scores[k] - mu) * (scores[k] - mu);
-      sd = Math.sqrt(sd / scores.length) || 1e-9;
-      for (k = 0; k <= 2 * m; k++) if (Math.abs(k - bk) > gap && scores[k] > rival) rival = scores[k];
-      var res = { off: (bk - m) * step, scale: sc, z: (bs - mu) / sd, ratio: (bs - mu) / ((rival - mu) || 1e-9), score: bs };
+      for (k = lo0; k <= hi0; k++){ mu += scores[k]; if (scores[k] > bs){ bs = scores[k]; bk = k; } }
+      mu /= (hi0 - lo0 + 1);
+      for (k = lo0; k <= hi0; k++) sd += (scores[k] - mu) * (scores[k] - mu);
+      sd = Math.sqrt(sd / (hi0 - lo0 + 1)) || 1e-9;
+      for (k = lo0; k <= hi0; k++) if (Math.abs(k - bk) > gap && scores[k] > rival) rival = scores[k];
+      var res = { off: base + (bk - m) * step, scale: sc, z: (bs - mu) / sd, ratio: (bs - mu) / ((rival - mu) || 1e-9), score: bs };
       if (!best || res.score > best.score) best = res;
       if (sc === 1) one = res;
     });
@@ -9517,6 +9791,7 @@
   }
   function ssLabel(){
     if (!ss) return 'Sync automatically';
+    if (ss.phase === 'follow') return 'Following the voices';
     var got = Math.floor(ss.heard / SS_HZ);
     return (ss.kind === 'read' ? 'Reading ahead… ' : 'Listening… ') + got + ' s';
   }
@@ -9536,7 +9811,7 @@
   function ssFinish(msg, kind){ ssStop(); if (msg) setStatus(msg, kind || 'info'); }
   /** The panel's button: start, or stop one that is running. */
   function ssToggle(){
-    if (ss){ ssFinish('Stopped syncing — the timing is as it was.'); return; }
+    if (ss){ ssFinish(ss.phase === 'follow' ? 'Stopped following — the timing stays as it is.' : 'Stopped syncing — the timing is as it was.'); return; }
     if (!player || !document.body.classList.contains('playing')){ setStatus('Start the video first.', 'info'); return; }
     var live = false; try { live = !!player.isLive(); } catch(e){}
     if (live){ setStatus('Live streams cannot be synced.', 'info'); return; }
@@ -9546,7 +9821,7 @@
     if (tcue.cues.length < 8){ setStatus('This subtitle file has too few lines to sync.', 'info'); return; }
     var src = ssReadable(), why = src ? '' : ssDeaf();
     if (why){ setStatus(why, 'info'); return; }
-    ss = { seq: playSeq, key: tcue.key, kind: src ? 'read' : 'listen', base: -1, vals: [], heard: 0, next: SS_MIN * SS_HZ, run: [], loud: -200,
+    ss = { seq: playSeq, key: tcue.key, kind: src ? 'read' : 'listen', phase: 'find', base: -1, vals: [], heard: 0, next: SS_MIN * SS_HZ, run: [], loud: -200,
       vad: null, surround: false, buf: null, lastT: -1, startedAt: Date.now(), timer: null, ctl: null, busy: false };
     if (src) ssRead(ss, src);
     else if (!ssListen(ss)) return;
@@ -9558,7 +9833,11 @@
     var idx = Math.round(t * SS_HZ);
     if (s.base < 0) s.base = idx;
     var k = idx - s.base;
-    if (k < 0 || k > SS_HZ * 1200) return;        // before the start, or a jump far ahead: ignored (a seek restarts)
+    if (k < 0) return;                             // before the start (a seek restarts the collection)
+    if (k >= SS_HZ * 1200){                       // following a whole film: keep the last 10 minutes
+      var cut = SS_HZ * 600; s.vals = s.vals.slice(cut); s.base += cut; k -= cut;
+      if (k >= SS_HZ * 1200) return;
+    }
     while (s.vals.length < k) s.vals.push(NaN);
     if (k >= s.vals.length || s.vals[k] !== s.vals[k]){ s.heard++; if (e > s.loud) s.loud = e; }
     s.vals[k] = e;
@@ -9573,21 +9852,34 @@
     if (s.loud < -90){ ssFinish(s.kind === 'read' ? 'Could not hear anything in this file.' : 'Could not hear this stream — it may not allow it here.', 'err'); return; }
     var tcue = ssTrackCues();
     if (!tcue || tcue.key !== s.key || !tcue.cues){ ssFinish('The subtitles changed, so the sync stopped. Start it again for these.'); return; }
-    var r = ssSolve({ t0: s.base / SS_HZ, vals: s.vals }, tcue.cues);
-    var pass = !!(r && r.z >= SS_Z && r.ratio >= SS_RATIO);
+    var fol = s.phase === 'follow', from = fol ? Math.max(0, s.vals.length - SS_FOLLOW_W * SS_HZ) : 0;
+    var r = ssSolve({ t0: (s.base + from) / SS_HZ, vals: from ? s.vals.slice(from) : s.vals }, tcue.cues, fol ? { around: subOffset, scale: subScale } : null);
+    var pass = !!(r && r.z >= (fol ? SS_FZ : SS_Z) && r.ratio >= SS_RATIO), tol = fol ? SS_FTOL : 0.25;
     if (!pass) s.run = [];
     else {
       var last = s.run[s.run.length - 1];
-      if (last && (Math.abs(last.off - r.off) >= 0.25 || last.scale !== r.scale)) s.run = [];
+      if (last && (Math.abs(last.off - r.off) >= tol || last.scale !== r.scale)) s.run = [];
       s.run.push(r);
     }
+    if (s.run.length >= SS_AGREE && fol){
+      s.run = [];
+      if (Math.abs(r.off - subOffset) >= 0.3){
+        setSubOffset(r.off, r.scale, true);
+        setStatus('Subtitle timing followed the voices: ' + (subOffset > 0 ? '+' : '−') + Math.abs(subOffset).toFixed(1) + ' s.', 'ok');
+      }
+      ssPaint();
+      return;
+    }
     if (s.run.length >= SS_AGREE){
-      ssStop();
       setSubOffset(r.off, r.scale, true);
       var said = !subOffset ? 'they were already in time' : (Math.abs(subOffset).toFixed(1) + ' s ' + (subOffset > 0 ? 'later' : 'earlier'));
+      // listening goes on for the rest of the play: a file cut from another broadcast drifts a few seconds at each break
+      if (s.kind === 'listen'){ s.phase = 'follow'; s.run = []; setStatus('Subtitles synced — ' + said + (r.scale !== 1 ? ', speed matched' : '') + '. Following the voices from here.', 'ok'); ssPaint(); return; }
+      ssStop();
       setStatus('Subtitles synced — ' + said + (r.scale !== 1 ? ', speed matched' : '') + '.', 'ok');
       return;
     }
+    if (fol){ ssPaint(); return; }
     if (s.heard >= SS_MAX * SS_HZ || (s.kind === 'read' && s.ended)){
       ssFinish('Could not match these subtitles to the voices — they may be for another version of the video. The timing is as it was.', 'err');
       return;
