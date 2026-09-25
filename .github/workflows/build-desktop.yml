@@ -209,7 +209,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          A security update. Nebula now runs on a supported, current version of its desktop engine (the old one had stopped receiving fixes), and the file reader it uses on streams it cannot play directly is up to date. Sharing with your TV reaches only the internet, never other devices on your network; add-ons and watch parties can only point the player at web addresses; invite links and TV sign-in codes wait for you to confirm.
+          New, experimental: Sync automatically, in the Subtitles panel's Timing section. It fixes an add-on subtitle file's timing by matching its lines to the voices, including files made for a different frame rate. For a file, the app reads the sound ahead of where you are and finishes in seconds; for a stream it listens while you watch, which takes a few minutes. It may not always find the timing — Back in sync undoes it.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
