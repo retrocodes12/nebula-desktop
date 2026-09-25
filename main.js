@@ -129,6 +129,35 @@ async function segment(q, hd, req, res) {
   ff.on('close', (code, sig) => { if ((code || sig) && !res.writableEnded) { try { res.destroy(); } catch (e) {} } if ((code || sig) && !killed) console.error('ffmpeg seg exit', code || sig, err.trim().slice(-300)); });   // a crash is a failed piece, never an empty one
 }
 
+// The voices of audio track `a` from second `t`, for the player's automatic subtitle timing: 16 kHz mono s16le, decoded as
+// fast as the file arrives (it needs minutes of speech, and waiting for playback to reach them would take as long). A film's
+// dialogue is its centre channel (5.1 / 7.1 / 3.0), or what both sides share in stereo — so the track's layout is asked first.
+async function speech(q, hd, req, res) {
+  const src = q.get('src') || '';
+  const t = Math.max(0, Number(q.get('t')) || 0), len = Math.min(600, Math.max(10, Number(q.get('len')) || 360)), a = Math.min(99, Math.max(0, Math.floor(Number(q.get('a')) || 0)));
+  const input = await source.urlFor(src, hd, agent()); if (req.destroyed) return;
+  const channels = await new Promise((ok) => {
+    let out = '', p;
+    try { p = spawn(FFPROBE, ['-v', 'error', ...NET, '-select_streams', 'a:' + a, '-show_entries', 'stream=channels', '-of', 'csv=p=0', input], { stdio: ['ignore', 'pipe', 'ignore'] }); } catch (e) { ok(0); return; }
+    const timer = setTimeout(() => { try { p.kill('SIGKILL'); } catch (e) {} }, 20000);
+    p.stdout.on('data', (d) => { out += d; });
+    p.on('error', () => { clearTimeout(timer); ok(0); });
+    p.on('close', () => { clearTimeout(timer); ok(parseInt(out, 10) || 0); });
+  });
+  if (req.destroyed) return;
+  if (!channels) { res.statusCode = 502; res.end('no audio'); return; }
+  const pan = channels === 3 || channels >= 5 ? 'pan=mono|c0=c2' : channels === 1 ? 'anull' : 'pan=mono|c0=0.5*c0+0.5*c1';
+  const ff = spawn(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-nostdin', ...NET, '-ss', String(t), '-i', input, '-t', String(len),
+    '-map', '0:a:' + a, '-vn', '-sn', '-dn', '-af', pan, '-ar', '16000', '-ac', '1', '-f', 's16le', 'pipe:1'], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let err = '';
+  ff.stderr.on('data', (d) => { err += d; if (err.length > 2000) err = err.slice(-2000); });
+  res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store' });
+  ff.stdout.pipe(res);
+  req.on('close', () => { try { ff.kill('SIGKILL'); } catch (e) {} });   // the sync found its answer, or stopped
+  ff.on('error', (e) => { console.error('ffmpeg speech spawn', e && e.message || e); try { res.destroy(); } catch (e2) {} });
+  ff.on('close', (code, sig) => { if (code && !res.writableEnded) { try { res.destroy(); } catch (e) {} } if (code) console.error('ffmpeg speech exit', code, err.trim().slice(-300)); });
+}
+
 // ---- In-app update. The installer build asks GitHub for the newest release through electron-updater: the latest.yml
 // beside the installer names the file and its sha512, the blockmap makes the download differential, and the installer runs
 // silently on restart into the same folder. The portable build cannot be replaced by an installer: it downloads the new
@@ -360,7 +389,7 @@ function startServer() {
       // (DNS rebinding) is same-origin with itself and would pass the Sec-Fetch-Site gate below
       if (req.headers.host !== '127.0.0.1:' + req.socket.localPort) { res.statusCode = 421; res.end('misdirected'); return; }
       const u = new URL(req.url || '/', 'http://127.0.0.1');
-      if (u.pathname === '/probe' || u.pathname === '/seg') {
+      if (u.pathname === '/probe' || u.pathname === '/seg' || u.pathname === '/speech') {
         // only the player's own page may drive FFmpeg, and it always says so: Chromium stamps its own fetches same-origin.
         // A page elsewhere is stamped cross-site / same-site / none — or, in an older browser, not at all, which used to
         // pass (2026-09-24: required now). A caller on this machine that sets the header already has the machine.
@@ -370,7 +399,7 @@ function startServer() {
           if (!ok) { res.statusCode = 501; res.end('no ffmpeg'); return; }
           if (!httpUrl(src)) { res.statusCode = 400; res.end('bad src'); return; }
           const hd = source.parseHeaders(u.searchParams.get('h'));   // the add-on's request headers for the file (proxyHeaders)
-          return u.pathname === '/probe' ? probe(src, hd, res) : segment(u.searchParams, hd, req, res);
+          return u.pathname === '/probe' ? probe(src, hd, res) : u.pathname === '/speech' ? speech(u.searchParams, hd, req, res) : segment(u.searchParams, hd, req, res);
         }).catch((e) => { if (!res.headersSent) { res.statusCode = 502; res.end(String((e && e.message) || e)); } });
         return;
       }
