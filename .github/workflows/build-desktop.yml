@@ -209,7 +209,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          Subtitles inside a video file (Built in, when the built-in player plays it) are cleaned up: no more stray code or shapes printed as text, no line shown twice, and choosing a track twice (or choosing another one) while it is still being read leaves exactly one on screen.
+          Subtitles inside a video file (Built in, when the built-in player plays it) come on in seconds instead of up to a minute: only the next minute or so of lines is read before they show, the file is read where it really lives instead of through the add-on each time, and reading starts as soon as you open Subtitles.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
