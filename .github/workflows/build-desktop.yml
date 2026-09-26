@@ -209,7 +209,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          Subtitles inside a video file now show up in the Subtitles panel (Built in) when the built-in player plays it. The experimental Sync automatically no longer sets subtitles far off, and while it listens to a stream it keeps following the voices after its first answer, for subtitle files cut from another broadcast that drift at each ad break.
+          Subtitles inside a video file (Built in, when the built-in player plays it) are cleaned up: no more stray code or shapes printed as text, no line shown twice, and choosing a track twice (or choosing another one) while it is still being read leaves exactly one on screen.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
