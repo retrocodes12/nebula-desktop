@@ -209,7 +209,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          A cleaner player: the Subtitles panel no longer shows the controls through it, a small window's toolbar fits every control as icons, a failed stream says why in a few words instead of dumping the server's reply, messages sit above the timeline instead of on it, and the quality menu uses the names you know (4K, 1080p, 720p).
+          New for Supporter Plus, Founders and the monthly plan: vote on what Nebula builds next, a private recap of your month, and the early web build — in Settings › Support. Settings › About now thanks the supporters.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
