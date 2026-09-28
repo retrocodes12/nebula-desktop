@@ -209,7 +209,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          New for Supporter Plus, Founders and the monthly plan: vote on what Nebula builds next, a private recap of your month, and the early web build — in Settings › Support. Settings › About now thanks the supporters.
+          The streams page names every add-on that is still answering, with a spinner — some take up to a minute — instead of looking finished without them.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
