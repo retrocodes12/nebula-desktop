@@ -6,7 +6,7 @@
 const { app, ipcMain, powerSaveBlocker } = require('electron');
 let host = null, gpu = null, blocker = -1;              // blocker: the display-sleep block while a film plays
 try { host = require('./mpv-host'); } catch (e) { host = null; }
-// the picture on the graphics chip (Linux): asked once whether this computer and build can; the host draws in software without it
+// the picture on the graphics chip (Linux, Windows): asked once whether this computer and build can; the host draws in software without it
 try { gpu = host ? require('./mpv-gpu') : null; if (gpu) { gpu.init(app.getPath('userData'), app.getVersion()); host.useGpu(gpu); } } catch (e) { gpu = null; }
 
 function attach(win, origin) {

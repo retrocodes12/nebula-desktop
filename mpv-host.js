@@ -144,11 +144,11 @@ function start() {
     let p;
     // stdin stays a pipe: the helper leaves as it closes. The token goes in the environment ('-' in its place): a command
     // line can be read by any user on the machine
-    try { p = spawnHelper([ss.ipc, String(MAX_W), String(MAX_H), String(process.pid), '-', origin || 'null', list.join('|')].concat(options()), 'pipe', { NEBULA_MPV_TOKEN: ss.token, NEBULA_MPV_GPU: (ss.asked = !!(gpu && gpu.want())) ? '1' : '0' }); }
+    try { p = spawnHelper([ss.ipc, String(MAX_W), String(MAX_H), String(process.pid), '-', origin || 'null', list.join('|')].concat(options()), 'pipe', { NEBULA_MPV_TOKEN: ss.token, NEBULA_MPV_GPU: (ss.asked = !!(gpu && gpu.want())) ? '1' : '0', NEBULA_ANGLE_DIR: path.join(path.dirname(helperFile()), 'angle') }); }
     catch (e) { try { fs.rmSync(ss.dir, { recursive: true, force: true }); } catch (x) {} return give(String(e && e.message || e)); }
     ss.p = p; s = ss;
     p.stdin.on('error', () => {});
-    p.stderr.on('data', (d) => { err = (err + d).slice(-2000); });
+    p.stderr.on('data', (d) => { err = (err + d).slice(-2000); if (DEBUG) process.stdout.write('[mpv-helper] ' + d); });
     // drawn on the graphics chip, the picture did not reach the window — or that helper never got as far as drawing: it
     // goes and a software one takes its place (once: gpu.broke() has been called, so the next is not asked for the chip)
     const chip = () => !!gpu && (ss.ready ? !!ss.gpu : !!ss.asked);
@@ -223,7 +223,8 @@ function drop(ss, kill) {
 }
 function options() {
   // (sw: / gpu: — set only when the helper draws in software / on the graphics chip: helper/nebula-mpv.c)
-  const o = { 'sw:hwdec': 'auto-copy-safe', 'gpu:hwdec': 'auto-safe', 'keep-open': 'yes', 'msg-level': 'all=warn', 'input-default-bindings': 'no', 'input-vo-keyboard': 'no', 'osd-level': '0',
+  // (Windows, through ANGLE: copy-back decoding, as its software path always had, until zero-copy is seen on a real chip)
+  const o = { 'sw:hwdec': 'auto-copy-safe', 'gpu:hwdec': process.platform === 'win32' ? 'auto-copy-safe' : 'auto-safe', 'keep-open': 'yes', 'msg-level': 'all=warn', 'input-default-bindings': 'no', 'input-vo-keyboard': 'no', 'osd-level': '0',
     config: 'no', 'load-scripts': 'no', osc: 'no', ytdl: 'no', 'sub-auto': 'no', 'audio-file-auto': 'no', cache: 'auto', 'network-timeout': '10',
     'audio-client-name': 'Nebula', sid: 'no', 'hr-seek': 'yes',
     // a dropped connection is picked up again inside FFmpeg for a moment (retries at 0 and 1 s); past that the page
@@ -238,7 +239,9 @@ function options() {
     // CPU (mpv 0.34 would not at all: PQ came out flat, 09-15); the page's shader tone-maps from the file's own values
     // (drawn on the graphics chip, mpv's own renderer converts HDR there: no relabelling, and the page's shader stays out)
     'sw:vf': 'format=gamma=bt.1886:primaries=bt.709' };
+  if (process.platform === 'win32') o['gpu:screenshot-sw'] = 'yes';   // (the picture check's screenshot: never the renderer it checks)
   if (process.env.NEBULA_MPV_AO) o.ao = process.env.NEBULA_MPV_AO;     // the rigs play in silence
+  String(process.env.NEBULA_MPV_TEST_OPTS || '').split(';').forEach((kv) => { const i = kv.indexOf('='); if (i > 0) o[kv.slice(0, i)] = kv.slice(i + 1); });   // (a rig's own: "gpu:name=value;…")
   return Object.keys(o).map((k) => k + '=' + o[k]);
 }
 function connect(ss) {
@@ -254,7 +257,7 @@ function connect(ss) {
         ss.sock = k; ss.rbuf = ''; k.setEncoding('utf8');
         k.on('data', (c) => onData(ss, c)); k.on('error', () => {}); k.on('close', () => { if (ss.sock === k) ss.sock = null; });
         OBSERVE.forEach((n, i) => send(ss, ['observe_property', i + 1, n]).catch(() => {}));
-        send(ss, ['request_log_messages', 'warn']).catch(() => {});   // a host's "HTTP error 403" arrives as a warning
+        send(ss, ['request_log_messages', process.env.NEBULA_GPU_TRACE === '1' ? 'v' : 'warn']).catch(() => {});   // a host's "HTTP error 403" arrives as a warning (a test's trace: all of it)
         ok();
       });
     };
@@ -345,6 +348,7 @@ function event(ss, m) {
     if (!ours(ss)) return;
     ss.loaded = true; emit({ type: 'loaded', tracks: ss.props['track-list'] || [], version: ver });
   } else if (m.event === 'end-file') {
+    if (ss.killed) return;   // (a helper this side ends — the chip's picture failed: its tidy quit is no end; the close picks the play up)
     if (ss.expect == null || ss.expect === 'next' || (m.playlist_entry_id != null && m.playlist_entry_id !== ss.expect)) return;   // replaced or stopped: not news
     if (m.reason === 'redirect') { ss.expect = 'next'; return; }   // a playlist link: mpv goes on to the entry it named
     const was = ss.loaded; ss.loaded = false; ss.busy = false;
@@ -353,7 +357,8 @@ function event(ss, m) {
     emit({ type: 'end', reason: m.reason || 'stop', error: m.file_error || '', detail, loaded: was });
   } else if (!ours(ss)) return;
   else if (m.event === 'seek') { ss.headEnd = -1; ss.headAt = Date.now(); ss.starve = null; emit({ type: 'seek' }); }   // (the download starts again from there)
-  else if (m.event === 'playback-restart') emit({ type: 'restart' });
+  else if (m.event === 'playback-restart') {             // (+ the chip's picture held against mpv's screenshot: mpv-gpu.js verify)
+    emit({ type: 'restart' }); if (ss.gpu && gpu && !ss.verified) setTimeout(() => gpu.verify(ss, (f) => send(ss, ['screenshot-to-file', f, 'video']), () => s === ss && !ss.dropped, () => end(ss)), 1200); }
   else if (m.event === 'video-reconfig') emit({ type: 'video', w: ss.props.dwidth || 0, h: ss.props.dheight || 0 });
 }
 

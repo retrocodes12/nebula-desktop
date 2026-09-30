@@ -24,7 +24,7 @@ const { contextBridge, ipcRenderer, webUtils, sharedTexture } = require('electro
 // it lasts (adapt) — a little softer, never a slideshow. A hidden window asks for nothing and the helper stops drawing (mpv's
 // clock moves on). Measured on an i3-3217U (09-15): 1080p drawn at 1366x768 in 12–13 ms; 4K HEVC at 1080p in 42 ms, which
 // adapt() steps down.
-// On Linux the helper draws on the graphics chip when it can (mpv-gpu.js): no frame is fetched — each arrives as a shared
+// On Linux and Windows the helper draws on the graphics chip when it can (mpv-gpu.js): no frame is fetched — each arrives as a shared
 // texture (a VideoFrame, no pixel copied on the way) and is drawn on the same canvas; this side tells the main process the
 // size it shows and whether it is looked at ('mpv-view'). Fetching its frames cost this thread most of a core (09-29).
 function mpvPicture() {

@@ -46,6 +46,30 @@ jobs:
           mkdir -p build/mpv/win && 7z e mpv-dev.7z -obuild/mpv/win libmpv-2.dll -y > /dev/null
           ls -la build/mpv/win
 
+      # ANGLE (OpenGL ES on Direct3D 11) for the picture on the graphics chip (helper/gpu_win.c). Electron carries its own
+      # inside electron.exe now (no libEGL/libGLESv2 beside it since 4x), so the helper brings one: MSYS2's build and the four
+      # MinGW runtime libraries it needs, each package pinned by its hash, into build/mpv/win/angle with their licences
+      # (d3dcompiler_47.dll, which ANGLE loads, is part of Windows 10 and 11)
+      - name: Fetch ANGLE (Windows)
+        shell: bash
+        run: |
+          B=https://repo.msys2.org/mingw/mingw64; Z=/c/msys64/usr/bin/zstd
+          mkdir -p pk x build/mpv/win/angle/licenses
+          while read -r sum f; do
+            curl -fsSL -o "pk/$f" "$B/$(printf '%s' "$f" | sed 's/+/%2B/g')"
+            echo "$sum  pk/$f" | sha256sum -c -
+            "$Z" -dc "pk/$f" | tar -x -C x
+          done <<'LIST'
+          758a85e878435bed76104d933f1f6c1268dca63eca0dceda357a6ef4180701f0 mingw-w64-x86_64-angleproject-2.1.r25748.890b5d8f-6-any.pkg.tar.zst
+          d615f6a8536ca16b1f049daea1fa440a3b7a405449ec0e93ad6106db43682d54 mingw-w64-x86_64-libgcc-16.2.0-4-any.pkg.tar.zst
+          3d4c3faf4c2c5c7a851ff12214ddcbf8c0d6df0964fc1d3ebd8c38f227183034 mingw-w64-x86_64-libstdc++-16.2.0-4-any.pkg.tar.zst
+          543017ce2731292b215bf1d36fd70a86d8a8d5ed0afba9d3db9fff89804cda71 mingw-w64-x86_64-libwinpthread-14.0.0.r426.g4564ee4b5-1-any.pkg.tar.zst
+          9e75842a070ba648e986e12424e1c92c9d7d77200e85f6a34eeb600819f2e694 mingw-w64-x86_64-zlib-1.3.2-2-any.pkg.tar.zst
+          LIST
+          for d in libEGL.dll libGLESv2.dll libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll zlib1.dll; do cp "x/mingw64/bin/$d" build/mpv/win/angle/; done
+          cp -r x/mingw64/share/licenses/* build/mpv/win/angle/licenses/
+          ls -la build/mpv/win/angle build/mpv/win/angle/licenses
+
       # the full-format player's helper (helper/nebula-mpv.c), MinGW-w64, linked statically: it needs nothing but libmpv-2.dll
       # beside it. The runner's own gcc when it has one, else MSYS2's.
       - name: Build the player helper (Windows)
@@ -54,7 +78,7 @@ jobs:
           G=$(command -v gcc || true)
           if [ -z "$G" ]; then /c/msys64/usr/bin/pacman -S --noconfirm --needed mingw-w64-x86_64-gcc > /dev/null; G=/c/msys64/mingw64/bin/gcc; fi
           "$G" --version | head -1
-          "$G" -O2 -Wall -Wextra -Werror -static -municode -o build/mpv/win/nebula-mpv.exe helper/nebula-mpv.c helper/frames.c -lwinmm -lws2_32
+          "$G" -O2 -Wall -Wextra -Werror -static -municode -o build/mpv/win/nebula-mpv.exe helper/nebula-mpv.c helper/frames.c helper/gpu_win.c -lwinmm -lws2_32
           ls -la build/mpv/win
 
       # the helper and the libmpv it ships, driven the way the app drives them (probe, frames, pause, a seek), inside Electron's runtime
@@ -66,6 +90,31 @@ jobs:
           $F $X -t 3 -c:v libx265 -preset ultrafast -pix_fmt yuv420p10le -x265-params log-level=error -color_primaries bt2020 -color_trc smpte2084 -colorspace bt2020nc -y hdr.mkv
           $F $X -t 3 -c:v libx265 -preset ultrafast -pix_fmt yuv420p10le -x265-params log-level=error -color_primaries bt709 -color_trc bt709 -colorspace bt709 -y sdr.mkv
           NEBULA_MPV_AO=null HDR_PAIR=hdr.mkv,sdr.mkv ELECTRON_RUN_AS_NODE=1 node_modules/electron/dist/electron.exe scripts/mpv-smoke.cjs smoke.mkv
+
+      # the picture on the graphics chip, end to end in a real window (scripts/gpu-check.cjs): the helper draws through ANGLE on
+      # Direct3D 11 into a shared texture, the app's own bridge imports it, and the window's pixels are read back — four
+      # colours, the right way up, before and after the window changes size. A runner has no graphics chip: its display
+      # adapter is Microsoft's software one, which the window and the helper both draw with. On it mpv's picture through ANGLE
+      # comes out wrong in about one play in five (10-01), which the picture check (mpv-gpu.js verify) catches and sends to
+      # software — so every one of ten rounds must show the right picture, and at least five must have kept the chip.
+      - name: Check the picture on the graphics chip (Windows)
+        shell: bash
+        run: |
+          F=node_modules/ffmpeg-static/ffmpeg.exe
+          $F -hide_banner -loglevel error -filter_complex "color=red:s=320x180:r=24[a];color=0x00ff00:s=320x180:r=24[b];color=blue:s=320x180:r=24[c];color=white:s=320x180:r=24[d];[a][b]hstack[t];[c][d]hstack[u];[t][u]vstack,format=yuv420p[v]" -map "[v]" -t 30 -c:v libx264 -y grid.mkv
+          set +e
+          bad=0; chip=0
+          for n in 1 2 3 4 5 6 7 8 9 10; do
+            NEBULA_MPV_DEBUG=1 GPU_CHECK_OUT=gpu$n.json node_modules/electron/dist/electron.exe scripts/gpu-check.cjs grid.mkv > gpu$n.log 2>&1; e=$?
+            on=$(node -p "try { require('./gpu$n.json').gpu } catch (e) { 'none' }")
+            echo "round $n: exit $e, graphics chip $on"; grep -h "picture check\|mpv-gpu\] off" gpu$n.log || true
+            if [ $e -ne 0 ]; then bad=1; cat gpu$n.log; cat gpu$n.json || true; fi
+            [ "$on" = true ] && chip=$((chip + 1))
+          done
+          NEBULA_NO_GPU=1 GPU_CHECK_OUT=sw.json node_modules/electron/dist/electron.exe scripts/gpu-check.cjs grid.mkv; w=$?
+          set -e
+          echo "rounds on the graphics chip: $chip of 10; software: exit $w"; [ $w -eq 0 ] || cat sw.json || true
+          test $bad -eq 0 && test $w -eq 0 && test $chip -ge 5
 
       - name: Build Windows installer + portable
         run: npm run dist
@@ -229,7 +278,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          On Linux, films now play far more smoothly on slower computers: the full-format player draws each frame with the graphics chip and hands it to the window without copying it, so frames are no longer dropped or the picture shrunk to keep up, and films the chip can decode are decoded there too. A computer that cannot do this keeps playing exactly as before. Windows is unchanged.
+          On Windows, films now play far more smoothly on slower computers: the full-format player draws each frame with the graphics chip and hands it to the window without copying it (Linux has done this since 1.91.0), so frames are no longer dropped or the picture shrunk to keep up. A computer whose graphics cannot do this keeps playing exactly as before. Linux is unchanged.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \

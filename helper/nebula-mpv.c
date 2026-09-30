@@ -16,13 +16,15 @@
  *       load), 6/7 (mpv will not be made / start) or 8 (too old to draw here)
  * On Windows the arguments arrive as UTF-16 (wmain, -municode): an install folder under any user name loads.
  *
- * Linux, NEBULA_MPV_GPU=1 in the environment: the frames are drawn on the graphics chip instead (gpu.c) and nothing goes
- * through the frame server — "READY <port> gpu", then on stdout "BUF …" (gpu.c) and, for every frame,
+ * NEBULA_MPV_GPU=1 in the environment: the frames are drawn on the graphics chip instead (gpu.c on Linux, gpu_win.c on
+ * Windows) and nothing goes through the frame server — "READY <port> gpu", then on stdout "BUF …" and, for every frame,
  *   F <serial> <index> <count> <gen> <drawus>     frame <count> is in buffer <index> of set <serial>
  * and "T <serial> <index>" once at the start: that buffer holds the check colour (18, 52, 86). The size to draw and whether
- * anyone is looking arrive on stdin: "S <w> <h>" and "V <0|1>" (stdin still closes when the parent goes). An option
- * written gpu:name=value is set only when drawing this way, sw:name=value only when drawing in software; a computer that
- * cannot draw this way (no render node, no EGL, a driver without a step) draws in software and says plain "READY <port>".
+ * anyone is looking arrive on stdin: "S <w> <h>" and "V <0|1>" (stdin still closes when the parent goes); on Windows also
+ * "D <serial>": the main process let go of that set, whose handles this closes in it. "P" asks for the next frame drawn to be
+ * read back as a grid of pixels ("P <serial> <w> <h> <cols> <rows> r g b …": the main process's picture check). An option written gpu:name=value is
+ * set only when drawing this way, sw:name=value only when drawing in software; a computer that cannot draw this way (no
+ * render node or no EGL on Linux, no ANGLE or no Direct3D 11 step on Windows) draws in software: plain "READY <port>".
  */
 #ifndef _WIN32
 #define _GNU_SOURCE
@@ -72,6 +74,7 @@ static void *lib;
 static uint32_t maxw, maxh;
 static volatile int quit;
 static uint8_t scratch[16 * 16 * 4];                   /* the target of a frame that is skipped, not drawn */
+static volatile int want_probe;                        /* "P" on stdin: the next frame drawn on the chip is read back (gpu_probe) */
 
 static void say(const char *what) { printf("%s\n", what); fflush(stdout); }
 
@@ -89,9 +92,29 @@ static void wait_wake(int ms) { WaitForSingleObject(wake, (DWORD)ms); }
 static int parent_gone(void) { return parent_h && WaitForSingleObject(parent_h, 0) == WAIT_OBJECT_0; }
 static void sleep_us(int64_t us) { Sleep((DWORD)((us + 999) / 1000)); }   /* 1 ms steps: timeBeginPeriod(1) at start */
 static uint64_t now_us(void) { LARGE_INTEGER f, c; QueryPerformanceFrequency(&f); QueryPerformanceCounter(&c); return (uint64_t)(c.QuadPart * 1000000.0 / f.QuadPart); }
+/* what the main process asks for when the frames are drawn on the graphics chip: the size, and whether anyone looks */
+static CRITICAL_SECTION mu;
+static uint32_t want_w = 1280, want_h = 720;
+static int want_look;
+static void gpu_want(uint32_t *w, uint32_t *h, int *look) { EnterCriticalSection(&mu); *w = want_w; *h = want_h; *look = want_look; LeaveCriticalSection(&mu); }
+static void stdin_line(const char *l) {
+  unsigned a = 0, b = 0;
+  if (sscanf(l, "D %u", &a) == 1) { gpu_drop(a); return; }   /* (its own lock: gpu_win.c) */
+  EnterCriticalSection(&mu);
+  if (sscanf(l, "S %u %u", &a, &b) == 2 && a >= 2 && b >= 2 && a <= 8192 && b <= 8192) { want_w = a; want_h = b; }
+  else if (sscanf(l, "V %u", &a) == 1) want_look = a != 0;
+  else if (l[0] == 'P' && !l[1]) want_probe = 1;
+  LeaveCriticalSection(&mu);
+  SetEvent(wake);
+}
 static DWORD WINAPI stdin_watch(LPVOID a) {
-  (void)a; char b[64]; DWORD n = 0; HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
-  while (ReadFile(in, b, sizeof b, &n, NULL) && n > 0) {}
+  (void)a; char b[64], line[64]; size_t ll = 0; DWORD n = 0; HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
+  while (ReadFile(in, b, sizeof b, &n, NULL) && n > 0) {
+    for (DWORD i = 0; i < n; i++) {
+      if (b[i] == '\n') { line[ll] = 0; stdin_line(line); ll = 0; }
+      else if (b[i] != '\r' && ll < sizeof line - 1) line[ll++] = b[i];
+    }
+  }
   quit = 1; SetEvent(wake);
   return 0;
 }
@@ -99,7 +122,11 @@ static void watch_stdin(void) {
   HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
   if (in && in != INVALID_HANDLE_VALUE && GetFileType(in) == FILE_TYPE_PIPE) { HANDLE t = CreateThread(NULL, 0, stdin_watch, NULL, 0, NULL); if (t) CloseHandle(t); }
 }
-static void watch_parent(const char *pid) { parent_h = OpenProcess(SYNCHRONIZE, FALSE, (DWORD)atol(pid)); wake = CreateEventA(NULL, FALSE, FALSE, NULL); timeBeginPeriod(1); }
+static void watch_parent(const char *pid) {
+  InitializeCriticalSection(&mu);
+  nebula_parent_pid = (unsigned long)atol(pid);
+  parent_h = OpenProcess(SYNCHRONIZE, FALSE, (DWORD)nebula_parent_pid); wake = CreateEventA(NULL, FALSE, FALSE, NULL); timeBeginPeriod(1);
+}
 #else
 static pid_t parent_pid;
 static pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;
@@ -140,6 +167,7 @@ static void stdin_line(const char *l) {
   pthread_mutex_lock(&mu);
   if (sscanf(l, "S %u %u", &a, &b) == 2 && a >= 2 && b >= 2 && a <= 8192 && b <= 8192) { want_w = a; want_h = b; }
   else if (sscanf(l, "V %u", &a) == 1) want_look = a != 0;
+  else if (l[0] == 'P' && !l[1]) want_probe = 1;
   pending = 1; pthread_cond_signal(&cv);
   pthread_mutex_unlock(&mu);
 }
@@ -232,9 +260,7 @@ static int run(int argc, char **argv) {
   if (!port) { say("ERROR the frame server could not start"); return 5; }
 
   int gpu = 0;
-#ifndef _WIN32
   { const char *g = getenv("NEBULA_MPV_GPU"); gpu = g && g[0] == '1' && gpu_init(); }
-#endif
   void *h = p_create();
   if (!h) { say("ERROR mpv_create"); return 6; }
   p_set_option_string(h, "vo", "libmpv");
@@ -244,12 +270,16 @@ static int run(int argc, char **argv) {
   set_opts(h, argc, argv, gpu, 0);
   if (p_initialize(h) < 0) { say("ERROR mpv_initialize"); return 7; }
   void *rc = NULL;
-#ifndef _WIN32
   if (gpu) {
     gl_init_t gi = { gpu_proc, NULL, NULL };
+#ifdef _WIN32
+    mpv_render_param gp[] = { { RP_API_TYPE, (void *)"opengl" }, { RP_GL_INIT, &gi }, { 0, NULL } };   /* (ANGLE: GL ES on Direct3D 11) */
+#else
     drm_params_t dp = { -1, 0, 0, NULL, gpu_va_fd() };  /* no screen of its own: only where VA-API finds the chip */
     mpv_render_param gp[] = { { RP_API_TYPE, (void *)"opengl" }, { RP_GL_INIT, &gi }, { RP_DRM, &dp }, { RP_DRM_V2, &dp }, { 0, NULL } };
+#endif
     if (p_rcreate(&rc, h, gp) < 0 || !rc || !gpu_size(64, 64)) {
+      fprintf(stderr, "nebula-mpv: graphics chip: %s\n", rc ? "the first buffers could not be made" : "libmpv would not draw with GL here"); fflush(stderr);
       /* this libmpv has no GL renderer, or the driver no buffers: software after all, with the options written for it */
       if (rc) p_rfree(rc);
       rc = NULL; gpu = 0;
@@ -257,22 +287,17 @@ static int run(int argc, char **argv) {
       set_opts(h, argc, argv, 0, 1);
     }
   }
-#endif
   if (!rc) {
     mpv_render_param cp[] = { { RP_API_TYPE, (void *)"sw" }, { 0, NULL } };
     if (p_rcreate(&rc, h, cp) < 0 || !rc) { say("ERROR the software renderer would not start"); p_terminate_destroy(h); return 8; }
   }
   p_rset_update_callback(rc, on_update, NULL);
   printf("READY %d%s\n", port, gpu ? " gpu" : ""); fflush(stdout);
-#ifndef _WIN32
   if (gpu) { gpu_fill(0, 18 / 255.0f, 52 / 255.0f, 86 / 255.0f); printf("T %u 0\n", gpu_serial()); fflush(stdout); }
-#endif
 
   uint32_t lastw = 0, lasth = 0, gen = 0;
   int lastpad = -1, wasidle = 1, gpufail = 0;
-#ifndef _WIN32
   int gbad = 0;                                        /* frames in a row the graphics renderer refused */
-#endif
   uint64_t count = 0;
   while (!quit) {
     wait_wake(40);
@@ -286,7 +311,6 @@ static int run(int argc, char **argv) {
     }
     if (gone) break;
     uint64_t fl = p_rupdate(rc);
-#ifndef _WIN32
     if (gpu) {
       uint32_t gw, gh; int look;
       gpu_want(&gw, &gh, &look);
@@ -322,6 +346,7 @@ static int run(int argc, char **argv) {
       }
       gbad = 0;
       gpu_finish(bi);
+      if (want_probe) { want_probe = 0; gpu_probe(bi); }
       uint32_t drawus = (uint32_t)(now_us() - t0);
       /* told a little before mpv wants it on screen: the window needs a few ms to take it over and show it */
       if (gdue > 0) { int64_t d = gdue - p_get_time_us(h) - 6000; if (d > 0 && d < 250000) sleep_us(d); }
@@ -330,7 +355,6 @@ static int run(int argc, char **argv) {
       lastw = gw; lasth = gh;
       continue;
     }
-#endif
     uint32_t w, ht; int pad;
     frames_want(&w, &ht, &pad);
     if (w < 2) w = 2;
@@ -375,9 +399,7 @@ static int run(int argc, char **argv) {
     lastw = w; lasth = ht; lastpad = pad;
   }
   p_rfree(rc);
-#ifndef _WIN32
   if (gpu) gpu_free();
-#endif
   p_terminate_destroy(h);
   return gpufail ? 9 : 0;
 }

@@ -20,6 +20,7 @@
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -79,6 +80,7 @@ static void (*glClear)(unsigned);
 static void (*glFinish)(void);
 static void (*glColorMask)(unsigned char, unsigned char, unsigned char, unsigned char);
 static void (*glDisable)(unsigned);
+static void (*glReadPixels)(int, int, int, int, unsigned, unsigned, void *);
 
 #define SYM(lib, f) do { *(void **)(&(f)) = dlsym(lib, #f); if (!(f)) return 0; } while (0)
 #define GLF(f) do { *(void **)(&(f)) = eglGetProcAddress(#f); if (!(f)) return 0; } while (0)
@@ -135,7 +137,7 @@ int gpu_init(void) {
   GLF(eglCreateImageKHR); GLF(eglDestroyImageKHR);
   GLF(glGenTextures); GLF(glDeleteTextures); GLF(glBindTexture); GLF(glTexParameteri); GLF(glGenFramebuffers); GLF(glDeleteFramebuffers);
   GLF(glBindFramebuffer); GLF(glFramebufferTexture2D); GLF(glCheckFramebufferStatus); GLF(glEGLImageTargetTexture2DOES);
-  GLF(glViewport); GLF(glClearColor); GLF(glClear); GLF(glFinish); GLF(glColorMask); GLF(glDisable);
+  GLF(glViewport); GLF(glClearColor); GLF(glClear); GLF(glFinish); GLF(glColorMask); GLF(glDisable); GLF(glReadPixels);
   char p[64]; snprintf(p, sizeof p, "/proc/self/fd/%d", node);
   vafd = open(p, O_RDWR | O_CLOEXEC);                   /* the same node, opened again: a descriptor of its own for VA-API */
   return vafd >= 0;
@@ -191,13 +193,39 @@ unsigned gpu_fbo(int i) { return buf[i].fbo; }
 /* The frame in buffer i is complete: every pixel made opaque (the window reads the fourth byte as alpha and would divide
    the colours by it — an HDR film came out too bright, 09-30), and the drawing has reached the buffer. */
 void gpu_finish(int i) {
+  static int traced = -1, every;
+  if (traced < 0) { const char *t = getenv("NEBULA_GPU_TRACE"); traced = t && t[0] == '1'; }
   glBindFramebuffer(GL_FRAMEBUFFER, buf[i].fbo);
+  if (traced && ++every % 24 == 0) {                   /* (a test's trace: what this buffer holds, read back here) */
+    unsigned char a[4] = { 0 };
+    glReadPixels((int)bw / 4, (int)bh / 4, 1, 1, 0x1908, 0x1401, a);
+    fprintf(stderr, "nebula-mpv: trace set %u buffer %d %ux%u drawn %u %u %u %u\n", serial, i, bw, bh, a[0], a[1], a[2], a[3]); fflush(stderr);
+  }
   glDisable(0x0C11);                                   /* (scissor) */
   glColorMask(0, 0, 0, 1); glClearColor(0.0f, 0.0f, 0.0f, 1.0f); glClear(0x4000); glColorMask(1, 1, 1, 1);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   glFinish();
 }
 /* One colour over buffer i: the start-up check's picture (the window must read this colour back before GPU frames are trusted). */
+/* A grid of the picture in buffer i, read back here, for the main process to hold against mpv's own screenshot of the same
+   film (mpv-host.js): "P <serial> <w> <h> <cols> <rows> r g b …", row by row from the picture's top (the buffers' first row
+   is the picture's top: RP_FLIP_Y 0). */
+void gpu_probe(int i) {
+  enum { COLS = 12, ROWS = 8 };
+  const char *bk = getenv("NEBULA_GPU_PROBE_BLACK");   /* (a rig's: the check must see a wrong picture and go to software) */
+  int black = bk && bk[0] == '1';
+  glBindFramebuffer(GL_FRAMEBUFFER, buf[i].fbo);
+  printf("P %u %u %u %d %d", serial, bw, bh, COLS, ROWS);
+  for (int r = 0; r < ROWS; r++)
+    for (int c = 0; c < COLS; c++) {
+      unsigned char px[4] = { 0, 0, 0, 0 };
+      glReadPixels((int)((c * 2 + 1) * bw / (COLS * 2)), (int)((r * 2 + 1) * bh / (ROWS * 2)), 1, 1, 0x1908, 0x1401, px);
+      if (black) px[0] = px[1] = px[2] = 0;
+      printf(" %u %u %u", px[0], px[1], px[2]);
+    }
+  printf("\n"); fflush(stdout);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
 void gpu_fill(int i, float r, float g, float b) {
   glBindFramebuffer(GL_FRAMEBUFFER, buf[i].fbo); glViewport(0, 0, (int)bw, (int)bh);
   glClearColor(r, g, b, 1.0f); glClear(0x4000); glFinish();
