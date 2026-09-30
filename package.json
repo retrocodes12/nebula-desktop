@@ -26,6 +26,8 @@
       "retime.js",
       "mpv-ipc.js",
       "mpv-host.js",
+      "mpv-args.js",
+      "mpv-gpu.js",
       "renderer/**/*"
     ],
     "directories": {
@@ -56,6 +58,8 @@
         "retime.js",
         "mpv-ipc.js",
         "mpv-host.js",
+        "mpv-args.js",
+        "mpv-gpu.js",
         "renderer/**/*"
       ],
       "extraResources": [
@@ -110,6 +114,8 @@
         "retime.js",
         "mpv-ipc.js",
         "mpv-host.js",
+        "mpv-args.js",
+        "mpv-gpu.js",
         "renderer/**/*"
       ],
       "extraResources": [

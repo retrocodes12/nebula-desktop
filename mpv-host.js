@@ -8,6 +8,7 @@
 // the window; scripts/mpv-smoke.cjs drives it alone in CI. Each helper run is a session of its own: a crash takes that
 // helper, never the window, and what it held goes with it; the next play starts another.
 const path = require('path'), fs = require('fs'), os = require('os'), net = require('net'), crypto = require('crypto'), cp = require('child_process');
+const { grant, target, clean, sweep } = require('./mpv-args');   // what the page may name, checked there (+ the temp folder's sweep)
 
 const MAX_W = 1920, MAX_H = 1080, WIN = process.platform === 'win32';
 const OBSERVE = ['time-pos', 'duration', 'pause', 'paused-for-cache', 'seeking', 'eof-reached', 'idle-active', 'volume', 'mute', 'speed',
@@ -30,13 +31,11 @@ const SETTABLE = { pause: YESNO, mute: YESNO, 'sub-bold': YESNO, volume: NUM, sp
   'sub-shadow-color': COLOR, 'sub-font': /^(sans-serif|serif|monospace)$/, 'sub-border-style': /^(outline-and-shadow|opaque-box|background-box)$/,
   'cache-secs': /^\d{1,7}$/, 'demuxer-max-bytes': /^([1-9]\d{1,2}|10[0-2]\d)MiB$/ };
 const SEEK_MODE = /^(absolute|relative)(\+exact|\+keyframes)?$/;
-const MEDIA_FILE = /\.(mkv|mk3d|mp4|m4v|mov|avi|webm|ts|m2ts|mts|mpg|mpeg|vob|wmv|flv|ogv|3gp|mka|mp3|m4a|aac|flac|wav|ogg|opus|ac3|eac3|dts)$/i;
 
 let s = null;                                           // the helper session now running (see start)
 let starting = null, probing = null, failed = '', good = '', ver = '', rid = 0, loadSeq = 0, onEvent = null, origin = '';
 let reapT = null;                                       // an idle helper leaves after a while (the next play starts another)
-const grants = new Map();                               // id → a local file the user picked (load('local:<id>'))
-let grantSeq = 0;
+let gpu = null;                                         // mpv-gpu.js, when the window's side gave it (useGpu): frames drawn on the graphics chip
 
 function exe() { return WIN ? 'nebula-mpv.exe' : 'nebula-mpv'; }
 function helperFile() {
@@ -64,7 +63,7 @@ function whyNot() {
 }
 function version() { return ver; }
 function frameBase() { return (s && s.port && s.sock) ? 'http://127.0.0.1:' + s.port + '/' + s.token + '/f' : ''; }
-function info() { const ok = available(); return { available: ok, error: ok ? '' : whyNot(), lib: good || libs().join(' | '), version: ver, base: frameBase() }; }
+function info() { const ok = available(); return { available: ok, error: ok ? '' : whyNot(), lib: good || libs().join(' | '), version: ver, base: frameBase(), gpu: !!(s && s.gpu) }; }
 const DEBUG = !!process.env.NEBULA_MPV_DEBUG;          // the rigs' trace: what mpv said and what went to the page
 // a line saying the connection failed under the file (FFmpeg's http layer): a reconnect for anything but a plain close, a known
 // length cut short, or (event()) any reconnect short of a size the host gave — https dropped unclosed says just "Input/output
@@ -128,7 +127,7 @@ function start() {
       if (done) return;
       done = true; clearTimeout(timer);
       if (starting === mine) starting = null;
-      if (!e) { emit({ type: 'up', base: frameBase() }); return ok(); }
+      if (!e) { emit({ type: 'up', base: frameBase(), gpu: !!ss.gpu }); return ok(); }
       if (ss) { if (s === ss) s = null; drop(ss, true); }
       no(e);
     };
@@ -145,25 +144,50 @@ function start() {
     let p;
     // stdin stays a pipe: the helper leaves as it closes. The token goes in the environment ('-' in its place): a command
     // line can be read by any user on the machine
-    try { p = spawnHelper([ss.ipc, String(MAX_W), String(MAX_H), String(process.pid), '-', origin || 'null', list.join('|')].concat(options()), 'pipe', { NEBULA_MPV_TOKEN: ss.token }); }
+    try { p = spawnHelper([ss.ipc, String(MAX_W), String(MAX_H), String(process.pid), '-', origin || 'null', list.join('|')].concat(options()), 'pipe', { NEBULA_MPV_TOKEN: ss.token, NEBULA_MPV_GPU: (ss.asked = !!(gpu && gpu.want())) ? '1' : '0' }); }
     catch (e) { try { fs.rmSync(ss.dir, { recursive: true, force: true }); } catch (x) {} return give(String(e && e.message || e)); }
     ss.p = p; s = ss;
     p.stdin.on('error', () => {});
     p.stderr.on('data', (d) => { err = (err + d).slice(-2000); });
+    // drawn on the graphics chip, the picture did not reach the window — or that helper never got as far as drawing: it
+    // goes and a software one takes its place (once: gpu.broke() has been called, so the next is not asked for the chip)
+    const chip = () => !!gpu && (ss.ready ? !!ss.gpu : !!ss.asked);
+    const late = (msg) => { if (!done && chip() && gpu.want()) { gpu.broke('the player did not start drawing on the graphics chip in time', false); again(); } else give(msg); };
+    const again = () => {
+      if (done) return;
+      done = true; clearTimeout(timer);
+      if (starting === mine) starting = null;
+      if (s === ss) s = null;
+      ss.quitting = true; drop(ss, true);
+      start().then(ok, no);
+    };
     p.stdout.on('data', (d) => {
-      if (done || ss.ready) return;
       out += d;
-      const m = /^READY (\d+)/m.exec(out);
-      if (!m) return;                                    // an ERROR line is followed by the exit, whose code says how final it is
-      ss.ready = true; ss.port = Number(m[1]);
-      if (ss.dropped) return give('stopped');
-      connect(ss).then(() => { if (ss.dropped) give('stopped'); else fin(null); }, (e) => give('control: ' + (e && e.message || e)));
+      if (!ss.ready) {
+        const m = /^READY (\d+)( gpu)?\r?\n/m.exec(out);
+        if (done || !m) return;                          // an ERROR line is followed by the exit, whose code says how final it is
+        ss.ready = true; ss.port = Number(m[1]); ss.gpu = !!m[2] && !!gpu && !!ss.asked;
+        if (ss.dropped) return give('stopped');
+        if (ss.gpu) { gpu.open(ss); clearTimeout(timer); timer = setTimeout(() => late('the player helper did not answer in 20 s'), 20000); }
+        connect(ss).then(() => (ss.gpu ? gpu.check(ss) : true)).then((fine) => { if (ss.dropped) give('stopped'); else if (fine) fin(null); else again(); },
+          (e) => give('control: ' + (e && e.message || e)));
+      }
+      if (!ss.gpu) { if (ss.ready) out = ''; return; }
+      let i;                                             // its buffers and frames, a line each (mpv-gpu.js)
+      while ((i = out.indexOf('\n')) >= 0) { const l = out.slice(0, i); out = out.slice(i + 1); if (ss.g && !/^READY/.test(l)) gpu.line(ss, l); }
+      if (out.length > 4096) out = '';                   // (no line of its is this long)
     });
     p.on('error', (e) => give(String(e && e.message || e)));
     p.on('close', (code, sig) => {
       ss.gone = true;
       const last = err.trim().split('\n').pop() || '';
+      // a helper that died by itself while drawing on the graphics chip, or on its way there (a driver can do that): software
+      // from now on, remembered — and one that ended before it was up, asked for the chip, gets a software one in its place
+      const own = !ss.quitting && !ss.killed;
+      if (own && chip() && /^SIG(SEGV|ABRT|BUS|ILL|FPE)$/.test(String(sig))) gpu.crashed('the player stopped while drawing on the graphics chip');
+      else if (own && chip() && code === 9) gpu.broke('the graphics chip stopped giving buffers', false);
       if (!done) {
+        if (own && chip() && !FATAL[code]) { gpu.broke('the player would not start drawing on the graphics chip', false); return again(); }
         const m = /^ERROR\s*(.*)$/m.exec(out);
         return give((m ? m[1].trim() : 'the player helper stopped (' + (code != null ? 'exit ' + code : sig) + ')') + (last ? ' — ' + last : ''), !!FATAL[code]);
       }
@@ -173,33 +197,33 @@ function start() {
       // a helper already replaced says nothing about the play now on
       if (current && inPlay && !ss.quitting) emit({ type: 'end', reason: 'error', error: 'the player stopped unexpectedly', detail: last, loaded: ss.loaded });
     });
-    timer = setTimeout(() => give('the player helper did not answer in 10 s'), 10000);
+    timer = setTimeout(() => late('the player helper did not answer in 10 s'), 10000);
   });
   if (!done) starting = mine;
   return mine;
+}
+/** A helper asked to leave — and made to, if it is stuck (inside a graphics driver, say). */
+function end(ss) {
+  if (!ss || !ss.p || ss.gone) return;
+  ss.killed = true;
+  try { ss.p.kill(); } catch (e) {}
+  const t = setTimeout(() => { if (!ss.gone) { try { ss.p.kill('SIGKILL'); } catch (e) {} } }, 1500);
+  if (t.unref) t.unref();
 }
 /** Everything one helper run holds, let go: its control line and its files — and the process, when asked. */
 function drop(ss, kill) {
   if (ss.dropped) return;
   ss.dropped = true;
-  if (kill && ss.p && !ss.gone) { try { ss.p.kill(); } catch (e) {} }
+  if (kill) end(ss);
+  if (ss.g && gpu) gpu.close(ss);
   if (ss.sock) { try { ss.sock.destroy(); } catch (e) {} ss.sock = null; }
   ss.pending.forEach((q) => q.no(new Error('closed'))); ss.pending.clear();
   ss.subFiles = [];
   if (ss.dir) { try { fs.rmSync(ss.dir, { recursive: true, force: true }); } catch (e) {} }
 }
-/** What a Nebula that ended without cleaning up left behind (a socket folder, subtitle files): removed when its process is gone. */
-function sweep() {
-  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
-  try {
-    fs.readdirSync(os.tmpdir()).forEach((f) => {
-      const m = /^nebula-mpv-(\d+)-/.exec(f);
-      if (m && Number(m[1]) !== process.pid && !alive(Number(m[1]))) { try { fs.rmSync(path.join(os.tmpdir(), f), { recursive: true, force: true }); } catch (e) {} }
-    });
-  } catch (e) {}
-}
 function options() {
-  const o = { hwdec: 'auto-copy-safe', 'keep-open': 'yes', 'msg-level': 'all=warn', 'input-default-bindings': 'no', 'input-vo-keyboard': 'no', 'osd-level': '0',
+  // (sw: / gpu: — set only when the helper draws in software / on the graphics chip: helper/nebula-mpv.c)
+  const o = { 'sw:hwdec': 'auto-copy-safe', 'gpu:hwdec': 'auto-safe', 'keep-open': 'yes', 'msg-level': 'all=warn', 'input-default-bindings': 'no', 'input-vo-keyboard': 'no', 'osd-level': '0',
     config: 'no', 'load-scripts': 'no', osc: 'no', ytdl: 'no', 'sub-auto': 'no', 'audio-file-auto': 'no', cache: 'auto', 'network-timeout': '10',
     'audio-client-name': 'Nebula', sid: 'no', 'hr-seek': 'yes',
     // a dropped connection is picked up again inside FFmpeg for a moment (retries at 0 and 1 s); past that the page
@@ -209,10 +233,11 @@ function options() {
     'stream-lavf-o': 'reconnect=1,reconnect_on_network_error=1,reconnect_delay_max=2',
     // the software renderer's scaling is most of a frame's cost: bicubic + ordered dither draws 4K HEVC at 1080p in 42 ms on
     // an i3-3217U where mpv's default lanczos + random dither took 53 (09-15); the page draws smaller when even that is too slow
-    'zimg-scaler': 'bicubic', 'zimg-dither': 'ordered',
+    'sw:zimg-scaler': 'bicubic', 'sw:zimg-dither': 'ordered',
     // every frame is labelled SDR BT.709 on its way to the renderer, so no libmpv version converts HDR or wide colour on the
     // CPU (mpv 0.34 would not at all: PQ came out flat, 09-15); the page's shader tone-maps from the file's own values
-    vf: 'format=gamma=bt.1886:primaries=bt.709' };
+    // (drawn on the graphics chip, mpv's own renderer converts HDR there: no relabelling, and the page's shader stays out)
+    'sw:vf': 'format=gamma=bt.1886:primaries=bt.709' };
   if (process.env.NEBULA_MPV_AO) o.ao = process.env.NEBULA_MPV_AO;     // the rigs play in silence
   return Object.keys(o).map((k) => k + '=' + o[k]);
 }
@@ -351,46 +376,12 @@ function snapshot() {
     vfps: num('estimated-vf-fps'), fps: num('container-fps'), vbr: num('video-bitrate'), abr: num('audio-bitrate'), aid: get('aid'), sid: get('sid'),
     acodec: P['audio-codec-name'] || null, vcodec: P['video-codec'] || null, ach: num('audio-params/channel-count'), gamma: P['video-params/gamma'] || null,
     prim: P['video-params/primaries'] || null,
-    hw: P['hwdec-current'] || null, live: !(dur > 0) && P['demuxer-via-network'] === true,
+    hw: P['hwdec-current'] || null, gpu: !!(s && s.gpu), live: !(dur > 0) && P['demuxer-via-network'] === true,
     neterr: s && typeof (s.neterr != null ? s.neterr : s.starve) === 'number' ? Math.round((s.neterr != null ? s.neterr : s.starve) * 10) / 10 : null, seekable: flag('seekable'), fsize: num('file-size'),
     ridle: flag('demuxer-cache-idle'), got: num('demuxer-cache-time'), p };   // (ridle: mpv's reader has stopped; got: the last packet it read in)
 }
 /** A film is on and moving (the display is kept awake for it). */
 function playing() { return !!(s && s.loaded && s.props.pause === false && s.props['idle-active'] !== true); }
-/** A local file the user picked, remembered so that load() can name it without the page ever sending a path: media only. */
-function grant(p) {
-  try {
-    if (typeof p !== 'string' || !path.isAbsolute(p) || !MEDIA_FILE.test(p) || !fs.statSync(p).isFile()) return '';
-  } catch (e) { return ''; }
-  for (const [id, q] of grants) if (q === p) return 'local:' + id;
-  const id = ++grantSeq;
-  grants.set(id, p);
-  return 'local:' + id;
-}
-/** What load() will hand mpv: an http(s) address (no control characters) or a granted file; '' for anything else. */
-function target(u) {
-  if (typeof u !== 'string' || u.length > 8192) return '';
-  const g = /^local:(\d{1,9})$/.exec(u);
-  if (g) return grants.get(Number(g[1])) || '';
-  if (!/^https?:\/\/[^\s/?#]+/i.test(u) || /[\x00-\x1f\x7f]/.test(u)) return '';
-  return u.replace(/ /g, '%20');
-}
-function clean(o) {
-  const num = (v, lo, hi, d) => (typeof v === 'number' && isFinite(v) && v >= lo && v <= hi ? v : d);
-  const line = (v, max) => (typeof v === 'string' && v.length <= max && !/[\r\n\0]/.test(v) ? v : '');
-  const langs = (v) => (typeof v === 'string' && /^[a-z]{2,3}(,[a-z]{2,3}){0,7}$/.test(v) ? v : '');
-  const headers = [];
-  if (o.headers && typeof o.headers === 'object') {
-    Object.keys(o.headers).slice(0, 20).forEach((k) => {
-      const v = line(String(o.headers[k] == null ? '' : o.headers[k]), 2048);
-      if (v && /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}$/.test(k)) headers.push([k, v]);
-    });
-  }
-  return { start: num(o.start, 0, 1e7, 0), ua: line(o.ua, 512) || 'Nebula', headers, alang: langs(o.alang), slang: langs(o.slang),
-    aheadSecs: num(o.aheadSecs, 0, 3600, 0), maxBytes: Math.round(num(o.maxBytes, 16, 2048, 150)),
-    aid: typeof o.aid === 'string' && /^\d{1,3}$/.test(o.aid) ? o.aid : 'auto', speed: String(num(o.speed, 0.25, 4, 1)),
-    volume: Math.round(num(o.volume, 0, 130, 100)), mute: o.mute === true, pause: o.pause === true, again: o.again === true };
-}
 /** Play `url` (http(s), or 'local:<id>' from grant()): o = { start, headers, ua, alang, slang, aheadSecs, maxBytes, aid, speed,
     volume, mute, pause, again }. A new file starts on its own terms — the preferred language's track, 1×, playing — unless o
     carries the last file's (a reconnect, again: true — its track, its speed, a pause the viewer asked for, its subtitle files). */
@@ -495,5 +486,10 @@ function dispose() {
   drop(ss, false);
 }
 
+/** The picture on the graphics chip (mpv-gpu.js, from the window's side). lost: the window stopped taking its frames — that
+    helper goes, the page reconnects, and the next helper draws in software. view: the size shown, and whether anyone looks. */
+function useGpu(g) { gpu = g || null; if (gpu) gpu.use({ lost: end }); }
+function view(w, h, look) { if (gpu && s && s.gpu) gpu.view(s, w, h, look); }
+
 module.exports = { available, whyNot, libs, version, info, on, setOrigin, probe, start, load, command, set, get, stop, subAdd, grant, snapshot, playing,
-  frameBase, dispose, MAX_W, MAX_H };
+  frameBase, dispose, useGpu, view, MAX_W, MAX_H };

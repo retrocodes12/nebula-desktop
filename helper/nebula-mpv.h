@@ -16,4 +16,19 @@ slot_t *frames_acquire(void);                          /* a slot to draw into, o
 void frames_publish(slot_t *s);                        /* the finished frame becomes the newest; waiting requests wake */
 void frames_want(uint32_t *w, uint32_t *h, int *pad);  /* the size (and row padding) the page asked for last */
 int frames_idle(void);                                 /* 1 when the page has not asked for a frame in 1.5 s */
+
+#ifndef _WIN32
+/* gpu.c — drawing on the graphics chip into buffers the window shows without a copy (Linux; see its head) */
+int gpu_init(void);                                    /* 1: a GL context is current on this thread */
+void *gpu_proc(void *ctx, const char *name);           /* libmpv's way to the GL functions */
+int gpu_va_fd(void);                                   /* the render node again, for VA-API alone */
+int gpu_size(uint32_t w, uint32_t h);                  /* the buffers, (re)made at this size and told on stdout; 0 = failed */
+uint32_t gpu_serial(void);                             /* which set of buffers is current */
+void gpu_have(uint32_t *w, uint32_t *h);               /* the size they were made at (0: none) */
+int gpu_next(void);                                    /* the buffer the next frame goes into */
+unsigned gpu_fbo(int i);
+void gpu_finish(int i);                                /* buffer i's frame is complete: opaque, and drawn */
+void gpu_fill(int i, float r, float g, float b);       /* one colour (the start-up check) */
+void gpu_free(void);
+#endif
 #endif

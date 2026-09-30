@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer, webUtils } = require('electron');
+const { contextBridge, ipcRenderer, webUtils, sharedTexture } = require('electron');
 
 // Minimal bridge for the shared player. The player feature-detects this object, so the same index.html works unchanged
 // on web and webOS. This preload runs SANDBOXED (Electron's bridge and the web platform, no Node): whatever needs the
@@ -24,6 +24,9 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 // it lasts (adapt) — a little softer, never a slideshow. A hidden window asks for nothing and the helper stops drawing (mpv's
 // clock moves on). Measured on an i3-3217U (09-15): 1080p drawn at 1366x768 in 12–13 ms; 4K HEVC at 1080p in 42 ms, which
 // adapt() steps down.
+// On Linux the helper draws on the graphics chip when it can (mpv-gpu.js): no frame is fetched — each arrives as a shared
+// texture (a VideoFrame, no pixel copied on the way) and is drawn on the same canvas; this side tells the main process the
+// size it shows and whether it is looked at ('mpv-view'). Fetching its frames cost this thread most of a core (09-29).
 function mpvPicture() {
   let info0 = null;
   try { info0 = ipcRenderer.sendSync('mpv-info'); } catch (e) { info0 = null; }
@@ -58,6 +61,7 @@ function mpvPicture() {
   let canvas = null, gl = null, gl2 = false, bw = 0, bh = 0, rw = 0, rh = 0, tw = 0, th = 0, vw = 0, vh = 0, uMode = null, mode = 0, modeSet = -1;
   let running = false, pumpId = 0, next = null, raf = 0, frames = 0, drawn = 0, upMs = 0, lastCount = 0, count0 = 0, lastGen = -1, staleGen = -1;
   let scale = 1, drawEma = 0, slowAt = 0, quickAt = 0, lastDrop = 0, hist = [], drawGap = 0, lastDrawAt = 0;
+  let gpuMode = !!info0.gpu, viewed = '';               // gpuMode: this helper's frames come as shared textures; viewed: the last 'mpv-view'
   const emit = (m) => { if (onEvent) { try { onEvent(m); } catch (x) {} } };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -91,7 +95,7 @@ function mpvPicture() {
     const k = Math.min(1, MAX_W / w, MAX_H / h);
     w = Math.max(2, Math.round(w * k)); h = Math.max(2, Math.round(h * k));
     if (w !== bw || h !== bh) { bw = w; bh = h; canvas.width = bw; canvas.height = bh; gl.viewport(0, 0, bw, bh); }
-    const src = vw > 0 && vh > 0 ? Math.min(1, Math.max(vw / bw, vh / bh)) : 1;
+    const src = gpuMode ? 1 : (vw > 0 && vh > 0 ? Math.min(1, Math.max(vw / bw, vh / bh)) : 1);   // (the chip scales to the element itself)
     const f = Math.max(Math.min(scale, src), Math.min(1, MIN_W / bw, src));
     rw = Math.max(2, Math.round(bw * f)); rh = Math.max(2, Math.round(bh * f));
   }
@@ -114,11 +118,70 @@ function mpvPicture() {
       lastDrawAt = now;
     }
   }
+  /** A frame drawn on the graphics chip, as it arrives (m: count, gen, drawMs, w, h): the same texture, the same quad. mpv
+      has already made an SDR picture of it, so the shader only shows it. */
+  function gpuFrame(vf, m) {
+    if (!running || !gpuMode || !gl || gl.isContextLost()) return;
+    lastCount = m.count; drawn = Math.max(0, lastCount - count0);
+    if (m.gen === staleGen) return;                      // the file before this load, still on its way out
+    const t0 = performance.now();
+    if (gl2) gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
+    if (uMode && modeSet !== 0) { gl.uniform1i(uMode, 0); modeSet = 0; }
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, vf);
+    tw = m.w; th = m.h;
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    frames++; lastGen = m.gen;
+    const now = performance.now(), d = now - t0;
+    upMs = upMs ? upMs * 0.9 + d * 0.1 : d;
+    // (a film's first frames carry the chip's one-off work — its programs compiled: 66 ms seen — and say nothing of the rest)
+    if (m.drawMs > 0 && frames > 3 && m.w === rw && m.h === rh) drawEma = drawEma ? drawEma * 0.9 + m.drawMs * 0.1 : m.drawMs;
+    if (lastDrawAt) drawGap = drawGap ? drawGap * 0.9 + (now - lastDrawAt) * 0.1 : now - lastDrawAt;
+    lastDrawAt = now;
+  }
+  /** The start-up check (mpv-gpu.js): does a picture drawn on the chip arrive here as drawn? Its middle pixel, read back:
+      true, false (another colour arrived — this computer's graphics cannot), or null (this page could not look just now). */
+  function checkPicture(vf, rgb) {
+    try {
+      const g = new OffscreenCanvas(8, 8).getContext('webgl2') || new OffscreenCanvas(8, 8).getContext('webgl');
+      if (!g) return null;
+      g.bindTexture(g.TEXTURE_2D, g.createTexture());
+      g.texImage2D(g.TEXTURE_2D, 0, g.RGBA, g.RGBA, g.UNSIGNED_BYTE, vf);
+      g.bindFramebuffer(g.FRAMEBUFFER, g.createFramebuffer());
+      g.framebufferTexture2D(g.FRAMEBUFFER, g.COLOR_ATTACHMENT0, g.TEXTURE_2D, g.getParameter(g.TEXTURE_BINDING_2D), 0);
+      const p = new Uint8Array(4);
+      g.readPixels(vf.codedWidth >> 1, vf.codedHeight >> 1, 1, 1, g.RGBA, g.UNSIGNED_BYTE, p);
+      const bad = g.getError() !== 0 || g.isContextLost(), lose = g.getExtension('WEBGL_lose_context');
+      if (lose) lose.loseContext();
+      if (bad) return null;
+      return Math.abs(p[0] - rgb[0]) <= 3 && Math.abs(p[1] - rgb[1]) <= 3 && Math.abs(p[2] - rgb[2]) <= 3;
+    } catch (e) { return null; }
+  }
+  if (sharedTexture && typeof sharedTexture.setSharedTextureReceiver === 'function') {
+    try {
+      sharedTexture.setSharedTextureReceiver(async (data, m) => {
+        const im = data && data.importedSharedTexture;
+        let vf = null;
+        try {
+          vf = im.getVideoFrame();
+          if (m && m.test) ipcRenderer.send('mpv-gputest', checkPicture(vf, m.test));
+          else if (m) gpuFrame(vf, m);
+        } catch (e) { if (m && m.test) ipcRenderer.send('mpv-gputest', null); }
+        try { if (vf) vf.close(); } catch (e) {}
+        try { if (im) im.release(); } catch (e) {}
+      });
+    } catch (e) {}
+  }
   /** Frames are asked for as fast as the helper draws them (each request is answered with the next one) and the newest is
       drawn at each animation frame: a frame not yet drawn when a newer one arrives is skipped, and adapt() watches for that. */
   async function pump(id) {
     let fails = 0;
     while (running && id === pumpId) {
+      if (gpuMode) {                                     // nothing to fetch: the helper is told the size shown and whether anyone looks
+        if (gl) fit();
+        const look = !!gl && rw >= 2 && rh >= 2 && !document.hidden, k = rw + 'x' + rh + ' ' + look;   // (no size yet: nothing to look at)
+        if (k !== viewed) { viewed = k; ipcRenderer.send('mpv-view', rw, rh, look); }
+        await sleep(150); continue;
+      }
       if (!base || !gl || document.hidden) { await sleep(200); continue; }
       fit();
       let r = null;
@@ -151,7 +214,7 @@ function mpvPicture() {
     // page skips mean slowness only when frames also reach the screen well apart (a 60 fps film on a 60 Hz screen skips a
     // frame now and then around the refresh without anything being slow)
     const dd = drawn - hist[0].d, df = frames - hist[0].f, pageOk = dd < 12 || df >= dd * 0.97;
-    const pageSlow = hist.length >= 8 && dd >= 12 && df < dd * 0.85 && drawGap > slot * 1.4;
+    const pageSlow = !gpuMode && hist.length >= 8 && dd >= 12 && df < dd * 0.85 && drawGap > slot * 1.4;
     if (s.pause !== false || s.cache || document.hidden) { slowAt = quickAt = 0; lastDrawAt = 0; return; }
     const drawSlow = drawEma > 0 && (drawEma > slot * 0.75 || (dropped && drawEma > slot * 0.5));
     if (drawSlow || pageSlow) {
@@ -166,7 +229,7 @@ function mpvPicture() {
   }
   ipcRenderer.on('nebula:mpv', (_e, m) => {
     if (!m || typeof m !== 'object') return;
-    if (m.type === 'up') { base = m.base || ''; lastCount = 0; count0 = 0; lastGen = -1; staleGen = -1; return; }   // a new helper counts from 0
+    if (m.type === 'up') { base = m.base || ''; gpuMode = !!m.gpu; viewed = ''; tw = th = 0; lastCount = 0; count0 = 0; lastGen = -1; staleGen = -1; return; }   // a new helper counts from 0
     if (m.type === 'state' && m.s) {
       props = m.s.p || {}; vw = m.s.w || 0; vh = m.s.h || 0;
       mode = m.s.gamma === 'pq' ? 1 : (m.s.gamma === 'hlg' ? 2 : (m.s.prim === 'bt.2020' ? 3 : 0));
@@ -200,7 +263,7 @@ function mpvPicture() {
       if (typeof url !== 'string' || !(/^https?:\/\//i.test(url) || /^local:\d+$/.test(url))) return { ok: false, error: 'this address cannot be played here' };
       ipcRenderer.send('mpv-load', url, o && typeof o === 'object' ? o : {});
       running = true; frames = 0; drawn = 0; count0 = lastCount; scale = 1; drawEma = 0; slowAt = quickAt = 0; lastDrop = 0; hist = []; drawGap = 0; lastDrawAt = 0;
-      vw = vh = 0; staleGen = lastGen; next = null;
+      vw = vh = 0; staleGen = lastGen; next = null; viewed = '';
       pump(++pumpId);
       return { ok: true };
     },
@@ -218,7 +281,7 @@ function mpvPicture() {
     /** frames = shown here; drawn = the helper's count (more than shown when the page cannot take them as fast). */
     stats() {
       return { frames, drawn, upMs: Math.round(upMs * 10) / 10, w: bw, h: bh, rw, rh, fw: tw, fh: th, scale: Math.round(scale * 100) / 100,
-        drawMs: Math.round(drawEma * 10) / 10, mode, shader: uMode ? 'hdr' : 'plain', lib: info0.lib || '' };
+        drawMs: Math.round(drawEma * 10) / 10, mode, shader: uMode ? 'hdr' : 'plain', lib: info0.lib || '', gpu: gpuMode };
     },
     subAdd(text, label, lang) { return ipcRenderer.invoke('mpv-sub', String(text || ''), String(label || ''), String(lang || '')); },
     /** A file the user picked (input or drop) → 'local:N' for load(), '' when it is not a film this player takes. */

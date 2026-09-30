@@ -137,10 +137,11 @@ jobs:
       - name: Build the player helper (Linux)
         run: |
           docker run --rm -v "$PWD":/w -w /w ubuntu:20.04 bash -c 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq gcc libc6-dev > /dev/null \
-            && gcc -O2 -Wall -Wextra -Werror -o build/mpv/linux/nebula-mpv helper/nebula-mpv.c helper/frames.c -ldl -lpthread && chmod 0755 build/mpv/linux/nebula-mpv \
-            && chown '"$(id -u):$(id -g)"' build/mpv/linux/nebula-mpv'
+            && gcc -O2 -Wall -Wextra -Werror -o build/mpv/linux/nebula-mpv helper/nebula-mpv.c helper/frames.c helper/gpu.c -ldl -lpthread && chmod 0755 build/mpv/linux/nebula-mpv \
+            && gcc -O2 -Wall -Wextra -Werror -shared -fPIC -o build/mpv/linux/nebula-takefd.node helper/takefd.c \
+            && chown '"$(id -u):$(id -g)"' build/mpv/linux/nebula-mpv build/mpv/linux/nebula-takefd.node'
           ls -la build/mpv/linux
-          echo "newest glibc it asks for: $(objdump -T build/mpv/linux/nebula-mpv | grep -o 'GLIBC_[0-9.]*' | sort -Vu | tail -1)"
+          echo "newest glibc it asks for: $(objdump -T build/mpv/linux/nebula-mpv build/mpv/linux/nebula-takefd.node | grep -o 'GLIBC_[0-9.]*' | sort -Vu | tail -1)"
 
       # the helper against the runner's own libmpv2 (a newer mpv than the one carried — the probe must pick it), driven as the app drives it
       - name: Smoke-test the full-format player
@@ -151,6 +152,25 @@ jobs:
           $F $X -t 3 -c:v libx265 -preset ultrafast -pix_fmt yuv420p10le -x265-params log-level=error -color_primaries bt2020 -color_trc smpte2084 -colorspace bt2020nc -y hdr.mkv
           $F $X -t 3 -c:v libx265 -preset ultrafast -pix_fmt yuv420p10le -x265-params log-level=error -color_primaries bt709 -color_trc bt709 -colorspace bt709 -y sdr.mkv
           NEBULA_MPV_AO=null HDR_PAIR=hdr.mkv,sdr.mkv ELECTRON_RUN_AS_NODE=1 node_modules/electron/dist/electron scripts/mpv-smoke.cjs smoke.mkv
+
+      # the graphics-chip way of drawing (helper/gpu.c, helper/takefd.c): the bridge loads into Electron's Node and copies a
+      # child's descriptor, and a helper asked to draw on a chip this runner does not have falls back to software by itself
+      # (after the smoke test: that step installs the runner's libmpv2, which the helper loads here)
+      - name: Check the graphics bridge and its fallback (Linux)
+        run: |
+          ELECTRON_RUN_AS_NODE=1 node_modules/electron/dist/electron -e '
+            const a = require("./build/mpv/linux/nebula-takefd.node"), cp = require("child_process"), fs = require("fs");
+            const p = cp.spawn("sleep", ["5"], { stdio: ["ignore", "ignore", "ignore"] });
+            setTimeout(() => {
+              const fd = a.takeFd(p.pid, 0), bad = a.takeFd(p.pid, 999);
+              console.log("takeFd", fd, fs.readlinkSync("/proc/self/fd/" + fd), "| a descriptor it does not have:", bad);
+              if (!(fd > 2) || bad >= 0 || a.closeFd(fd) !== 0) process.exit(1);
+              p.kill();
+            }, 300);'
+          # (the helper leaves when the process it was told is its parent is not: the inner shell is that parent, and ends it)
+          NEBULA_MPV_GPU=1 NEBULA_MPV_TOKEN=0123456789abcdef0123456789abcdef bash -c 'build/mpv/linux/nebula-mpv /tmp/nebula-gpu-ipc 1280 720 $$ - null "libmpv.so.2|libmpv.so.1|$PWD/build/mpv/linux/libmpv.so.1" ao=null gpu:hwdec=auto-safe sw:hwdec=no < /dev/null > ready.txt 2> ready.err & sleep 6; kill $! 2> /dev/null; wait $! 2> /dev/null; true'
+          cat ready.txt; head -5 ready.err || true
+          grep -Eq "^READY [0-9]+( gpu)?$" ready.txt || { echo "the helper did not start when asked to draw on the graphics chip"; exit 1; }
 
       # the libmpv the packages carry (Ubuntu 22.04's) on the system family it is for: its libraries installed, the package
       # itself taken away again, so the probe must find the carried copy beside the helper
