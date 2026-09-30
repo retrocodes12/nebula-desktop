@@ -229,7 +229,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          The streams page names every add-on that is still answering, with a spinner — some take up to a minute — instead of looking finished without them.
+          On Linux, films now play far more smoothly on slower computers: the full-format player draws each frame with the graphics chip and hands it to the window without copying it, so frames are no longer dropped or the picture shrunk to keep up, and films the chip can decode are decoded there too. A computer that cannot do this keeps playing exactly as before. Windows is unchanged.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
