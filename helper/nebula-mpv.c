@@ -269,7 +269,10 @@ static int run(int argc, char **argv) {
 #endif
 
   uint32_t lastw = 0, lasth = 0, gen = 0;
-  int lastpad = -1, wasidle = 1, gpufail = 0, gbad = 0;
+  int lastpad = -1, wasidle = 1, gpufail = 0;
+#ifndef _WIN32
+  int gbad = 0;                                        /* frames in a row the graphics renderer refused */
+#endif
   uint64_t count = 0;
   while (!quit) {
     wait_wake(40);
