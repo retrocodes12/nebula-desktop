@@ -212,8 +212,11 @@ void gpu_finish(int i) {
    is the picture's top: RP_FLIP_Y 0). */
 void gpu_probe(int i) {
   enum { COLS = 12, ROWS = 8 };
-  const char *bk = getenv("NEBULA_GPU_PROBE_BLACK");   /* (a rig's: the check must see a wrong picture and go to software) */
-  int black = bk && bk[0] == '1';
+  static int probes;                                   /* (a rig's: the check must see a wrong picture and go to software —
+                                                          1 = every grid black, 2 = every one after the first) */
+  const char *bk = getenv("NEBULA_GPU_PROBE_BLACK");
+  int black = bk && (bk[0] == '1' || (bk[0] == '2' && probes > 0));
+  probes++;
   glBindFramebuffer(GL_FRAMEBUFFER, buf[i].fbo);
   printf("P %u %u %u %d %d", serial, bw, bh, COLS, ROWS);
   for (int r = 0; r < ROWS; r++)

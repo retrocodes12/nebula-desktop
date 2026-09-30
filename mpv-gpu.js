@@ -120,6 +120,13 @@ function frame(ss, b, meta) {
     if (g.next && g.busy < 2) { const n = g.next; g.next = null; frame(ss, n.b, n.meta); }
   });
 }
+/** A new set of buffers (the window changed size): sets older than the last one let go of, and the picture checked again
+    once the size has settled — on CI's Direct3D adapter a right picture turned black at a resize and stayed so (10-01). */
+function newSet(ss, g, serial) {
+  Array.from(g.sets.keys()).forEach((k) => { if (k < g.top) shut(ss, g, k); });
+  g.top = serial; g.sets.set(serial, []);
+  if (ss.vfy) { ss.verified = false; clearTimeout(ss.vfyT); ss.vfyT = setTimeout(() => { if (ss.g === g) verify(ss, ...ss.vfy); }, 1500); }
+}
 /** A line of the helper's stdout after READY: its buffers, the check's picture, a frame. */
 function line(ss, l) {
   const g = ss.g;
@@ -143,7 +150,7 @@ function line(ss, l) {
       // what it names is checked by Chromium's graphics process when it opens it (a wrong one is refused, not shown)
       const handle = +a[6];
       if (stride !== w * 4 || handle % 4 !== 0 || handle >= 2 ** 32) return;
-      if (serial > g.top) { Array.from(g.sets.keys()).forEach((k) => { if (k < g.top) shut(ss, g, k); }); g.top = serial; g.sets.set(serial, []); }
+      if (serial > g.top) newSet(ss, g, serial);
       const set = g.sets.get(serial);
       if (set) set[i] = { handle, fd: -1, w, h, stride, modifier: '0' };
       return;
@@ -160,7 +167,7 @@ function line(ss, l) {
     try { kind = fs.readlinkSync('/proc/self/fd/' + fd); } catch (e) { kind = ''; }
     const size = addon.sizeFd(fd);
     if (!/dmabuf/.test(kind) || (size > 0 && size < stride * h)) { if (DEBUG) console.log('[mpv-gpu] refused ' + kind + ' ' + size); addon.closeFd(fd); return; }
-    if (serial > g.top) { Array.from(g.sets.keys()).forEach((k) => { if (k < g.top) shut(ss, g, k); }); g.top = serial; g.sets.set(serial, []); }
+    if (serial > g.top) newSet(ss, g, serial);
     const set = g.sets.get(serial), was = set[i];
     if (was && was.fd > 2) addon.closeFd(was.fd);
     set[i] = { fd, w, h, stride, modifier: a[9] };
@@ -241,7 +248,8 @@ async function samePicture(ss, file, shoot) {
   return !(near / pts < 0.5 && off > 30);
 }
 
-// Windows: a helper's first plain (not HDR) play on the graphics chip is held against mpv's own screenshot of the same film.
+// Windows: a helper's first plain (not HDR) play on the graphics chip is held against mpv's own screenshot of the same film,
+// and again after every new set of buffers (a resize, the mini player, full screen).
 // On CI's Direct3D adapter (10-01) mpv drawing through ANGLE came out black, or without its colour planes, in about one play
 // in five — from its first frame to its last, whatever mpv was set to; the start-up colour check cannot see that (it is
 // drawn by the helper, not by mpv). A picture that disagrees twice, a second apart, sends this computer back to software
@@ -249,7 +257,10 @@ async function samePicture(ss, file, shoot) {
 const VERIFY = (WIN || process.env.NEBULA_GPU_VERIFY === '1') && process.env.NEBULA_GPU_VERIFY !== '0';   // (=1: Linux too, for rigs)
 /** shoot(file): mpv writes its screenshot there; current(): this helper is still the one playing; end(): it goes. */
 async function verify(ss, shoot, current, end) {
-  if (!VERIFY || !ss.gpu || !ss.g || off || ss.verified || ss.verifying || ss.dropped || !ss.dir) return;
+  if (!VERIFY || !ss.gpu || !ss.g || off || ss.dropped || !ss.dir) return;
+  ss.vfy = [shoot, current, end];                      // (kept: every new set of buffers is checked again — line())
+  if (ss.verifying) { ss.vfyAgain = !ss.verified; return; }   // (a new set during a check: once more after it)
+  if (ss.verified) return;
   const P = ss.props;
   // (HDR: mpv's screenshot and its renderer tone-map differently — the next plain film is checked instead)
   if (/pq|hlg/.test(String(P['video-params/gamma'] || '')) || /2020/.test(String(P['video-params/primaries'] || ''))) return;
@@ -263,7 +274,10 @@ async function verify(ss, shoot, current, end) {
       if (v) { ss.verified = true; return; }
     }
     if (current()) { broke('the picture on the graphics chip did not match the film', false); end(); }
-  } finally { ss.verifying = false; }
+  } finally {
+    ss.verifying = false;
+    if (ss.vfyAgain && !ss.dropped) { ss.vfyAgain = false; ss.verified = false; setTimeout(() => { verify(ss, shoot, current, end); }, 500); }
+  }
 }
 /** The size the window shows the picture at, and whether anyone is looking (a hidden window: nothing is drawn). */
 function view(ss, w, h, look) {

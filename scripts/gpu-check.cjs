@@ -100,7 +100,9 @@ app.whenReady().then(async () => {
   // then the window changes size: new buffers are made at the new size and the old set is let go of (on Windows the
   // helper closes its handles in this process) — the picture must come back right, and keep coming
   win.setContentSize(800, 450);
-  await new Promise((r) => setTimeout(r, 1500));
+  // (the picture is checked again 1.5 s after a new set of buffers, twice a second apart if wrong, and the play picked up in
+  // software: judge after that)
+  await new Promise((r) => setTimeout(r, 6500));
   const was = stats.frames;
   await new Promise((r) => setTimeout(r, 1000));
   const second = await look(), moving = stats.frames > was;
