@@ -358,7 +358,7 @@ function event(ss, m) {
   } else if (!ours(ss)) return;
   else if (m.event === 'seek') { ss.headEnd = -1; ss.headAt = Date.now(); ss.starve = null; emit({ type: 'seek' }); }   // (the download starts again from there)
   else if (m.event === 'playback-restart') {             // (+ the chip's picture held against mpv's screenshot: mpv-gpu.js verify)
-    emit({ type: 'restart' }); if (ss.gpu && gpu && !ss.verified) setTimeout(() => gpu.verify(ss, (f) => send(ss, ['screenshot-to-file', f, 'video']), () => s === ss && !ss.dropped, () => end(ss)), 1200); }
+    emit({ type: 'restart' }); if (ss.gpu && gpu && !ss.verified) setTimeout(() => gpu.verify(ss, (f) => send(ss, ['screenshot-to-file', f, 'video']), () => s === ss && !ss.dropped, () => end(ss)), 700); }
   else if (m.event === 'video-reconfig') emit({ type: 'video', w: ss.props.dwidth || 0, h: ss.props.dheight || 0 });
 }
 

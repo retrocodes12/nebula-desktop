@@ -121,11 +121,11 @@ function frame(ss, b, meta) {
   });
 }
 /** A new set of buffers (the window changed size): sets older than the last one let go of, and the picture checked again
-    once the size has settled — on CI's Direct3D adapter a right picture turned black at a resize and stayed so (10-01). */
+    once the size has settled (1 s) — on CI's Direct3D adapter a right picture turned black at a resize and stayed so (10-01). */
 function newSet(ss, g, serial) {
   Array.from(g.sets.keys()).forEach((k) => { if (k < g.top) shut(ss, g, k); });
   g.top = serial; g.sets.set(serial, []);
-  if (ss.vfy) { ss.verified = false; clearTimeout(ss.vfyT); ss.vfyT = setTimeout(() => { if (ss.g === g) verify(ss, ...ss.vfy); }, 1500); }
+  if (ss.vfy) { ss.verified = false; clearTimeout(ss.vfyT); ss.vfyT = setTimeout(() => { if (ss.g === g) verify(ss, ...ss.vfy); }, 1000); }
 }
 /** A line of the helper's stdout after READY: its buffers, the check's picture, a frame. */
 function line(ss, l) {
@@ -252,7 +252,7 @@ async function samePicture(ss, file, shoot) {
 // and again after every new set of buffers (a resize, the mini player, full screen).
 // On CI's Direct3D adapter (10-01) mpv drawing through ANGLE came out black, or without its colour planes, in about one play
 // in five — from its first frame to its last, whatever mpv was set to; the start-up colour check cannot see that (it is
-// drawn by the helper, not by mpv). A picture that disagrees twice, a second apart, sends this computer back to software
+// drawn by the helper, not by mpv). A picture that disagrees twice, 0.4 s apart, sends this computer back to software
 // for the session; the page picks the play up there (as after a crash). NEBULA_GPU_VERIFY=0 switches the check off.
 const VERIFY = (WIN || process.env.NEBULA_GPU_VERIFY === '1') && process.env.NEBULA_GPU_VERIFY !== '0';   // (=1: Linux too, for rigs)
 /** shoot(file): mpv writes its screenshot there; current(): this helper is still the one playing; end(): it goes. */
@@ -267,7 +267,7 @@ async function verify(ss, shoot, current, end) {
   ss.verifying = true;
   try {
     for (let n = 0; n < 2 && !ss.dropped; n++) {
-      if (n) await new Promise((r) => setTimeout(r, 1000));
+      if (n) await new Promise((r) => setTimeout(r, 400));
       const v = await samePicture(ss, path.join(ss.dir, 'check' + n + '.png'), shoot);
       if (DEBUG) console.log('[mpv-gpu] picture check ' + n + ': ' + (v == null ? 'could not look' : (v ? 'the same' : 'DIFFERENT')));
       if (v == null) return;                           // (no frame or no screenshot: asked again at the next restart)
