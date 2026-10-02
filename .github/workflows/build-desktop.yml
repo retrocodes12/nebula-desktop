@@ -279,7 +279,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          On Windows, films now play far more smoothly on slower computers: the full-format player draws each frame with the graphics chip and hands it to the window without copying it (Linux has done this since 1.91.0), so frames are no longer dropped or the picture shrunk to keep up. A computer whose graphics cannot do this keeps playing exactly as before. Linux is unchanged.
+          Seekr previews: connect your own free key from seekr.tv in Settings › Playback, and scrubbing a film or episode shows a picture at once. The key follows your Nebula Profile to your other devices. (1.92.0: on Windows the picture is drawn on the graphics chip.)
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
