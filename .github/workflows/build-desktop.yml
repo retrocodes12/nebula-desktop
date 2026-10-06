@@ -279,7 +279,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          Seekr previews show at once and without gaps: every picture of the film is fetched in the background as soon as it starts, and the scrub never blanks while the next one is made. (1.93.0: connect your own free seekr.tv key in Settings › Playback.)
+          Your keyboard's media keys and the system's now-playing panel now work with Nebula: play, pause, a seek step each way, a jump to a spot, and Next goes to the next episode, with the title and artwork shown. Home's and the Library's rows scroll more smoothly, and catalog pages no longer offer catalogs that cannot show anything. Same player as web 2026.10.07.2.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
