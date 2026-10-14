@@ -631,6 +631,8 @@
   .s-spec b { display:block; color:var(--label); font-size:calc(14px * var(--ts)); font-weight:600; letter-spacing:-.01em; }
   .s-spec .s-nwr, .s-spec .s-slow { display:block; font-style:normal; color:var(--label3); font-size:calc(11px * var(--ts)); letter-spacing:.04em; margin-top:2px; }
   .stream.nwr .s-plate, .stream.nwr .stream-name { opacity:.7; }
+  .s-spec .s-nosnd, .s-spec .s-snd { display:block; font-style:normal; color:var(--label3); font-size:calc(11px * var(--ts)); letter-spacing:.04em; margin-top:2px; }
+  .stream.nosnd .s-plate, .stream.nosnd .stream-name { opacity:.7; }
   .stream.slow .s-plate, .stream.slow .stream-name { opacity:.8; }
   html.tv .s-plate { width:84px; padding:14px 0; }
   html.tv .s-plate b { font-size:calc(20px * var(--ts)); }
@@ -1657,6 +1659,43 @@
     .pui-bar .pui-btn .pl, #puiQualVal, #puiSpeedVal { display:none; }
   }
 
+  /* ---- the Guide (TV only): a timeline of live and upcoming items. 1 hour = 300 px, lanes 92 px, the sport labels and the
+     time ruler stay put while the grid scrolls under them ---- */
+  #view-guide.active { display:flex; flex-direction:column; overflow:hidden; padding-bottom:0; }
+  .g-sub { color:var(--label2); font-family:var(--mono); font-size:calc(15px * var(--ts)); letter-spacing:.12em;
+    text-transform:uppercase; margin:2px 0 18px; }
+  .g-wrap { flex:1 1 auto; min-height:0; overflow:auto; scrollbar-width:none; margin:0 calc(-1 * var(--pad)) 0 0; padding:0 0 24px; }
+  .g-wrap::-webkit-scrollbar { display:none; }
+  .g-canvas { position:relative; }
+  .g-ruler { position:-webkit-sticky; position:sticky; top:0; z-index:4; height:48px; background:var(--bg);
+    border-bottom:1px solid var(--sep); }
+  .g-corner { position:-webkit-sticky; position:sticky; left:0; z-index:1; width:220px; height:48px; background:var(--bg); }
+  .g-tick { position:absolute; top:0; height:48px; padding-left:8px; border-left:1px solid var(--sep);
+    color:var(--label2); font-family:var(--mono); font-size:calc(14px * var(--ts)); line-height:48px; white-space:nowrap; }
+  .g-nowtag { position:absolute; top:10px; height:26px; line-height:26px; padding:0 9px; border-radius:13px; background:var(--red);
+    color:#fff; font-family:var(--mono); font-size:calc(13px * var(--ts)); font-weight:600; transform:translateX(-50%); z-index:2; }
+  .g-lane { position:relative; height:92px; }
+  .g-lane.g-first { border-top:1px solid var(--sep); }
+  .g-label { position:-webkit-sticky; position:sticky; left:0; z-index:3; width:220px; height:100%; background:var(--bg);
+    display:flex; align-items:center; padding-right:16px; font-size:calc(20px * var(--ts)); font-weight:650; color:var(--label);
+    overflow:hidden; }
+  .g-label span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .gblock { position:absolute; top:6px; height:80px; padding:10px 14px; border:0; border-radius:12px; text-align:left;
+    background:var(--surface2); color:var(--label); cursor:pointer; overflow:hidden; display:flex; flex-direction:column;
+    justify-content:center; font:inherit; }
+  .gblock.live { box-shadow:inset 3px 0 0 var(--red); }
+  .gb-in { display:flex; flex-direction:column; min-width:0; }
+  .gb-name { font-size:calc(17px * var(--ts)); font-weight:600; line-height:1.2; display:-webkit-box; -webkit-line-clamp:2;
+    -webkit-box-orient:vertical; overflow:hidden; word-break:break-word; }
+  .gb-time { margin-top:4px; color:var(--label2); font-family:var(--mono); font-size:calc(13px * var(--ts)); white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; }
+  .gb-dot { display:inline-block; width:8px; height:8px; border-radius:4px; background:var(--red); margin-right:7px; vertical-align:1px; }
+  .gblock.focusable:focus { z-index:2; outline:0; background:var(--l3); box-shadow:0 0 0 3px #fff; }
+  .gblock.live.focusable:focus { box-shadow:inset 3px 0 0 var(--red), 0 0 0 3px #fff; }
+  .gblock.focusable:focus-visible { z-index:2; outline:0; background:var(--l3); box-shadow:0 0 0 3px #fff; }
+  .g-now { position:absolute; top:0; width:2px; margin-left:-1px; background:var(--red); z-index:1; pointer-events:none; }
+  .g-empty { color:var(--label2); padding:40px 0; }
+
   /* ---- TV (webOS): 10-foot sizing + sidebar layout ---- */
   html.tv { font-size:calc(20px * var(--ts)); --navh:82px; --pad:56px; --railw:80px; }
   html.tv body.upd .view { top:52px; }
@@ -2162,6 +2201,9 @@
     <button id="navHome" class="navitem focusable on" data-tab="home" title="Home">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>
       <span>Home</span></button>
+    <button id="navGuide" class="navitem focusable" data-tab="guide" title="Guide" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11M15 13h3M15 16h3"/></svg>
+      <span>Guide</span></button>
     <button id="navSearch" class="navitem focusable" data-tab="search" title="Search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/></svg>
       <span>Search</span></button>
@@ -2193,6 +2235,13 @@
   </div>
 
   <!-- LIBRARY: My List + upcoming episodes -->
+  <!-- GUIDE (TV): every live and upcoming item from the add-ons whose catalogs carry start times, on a timeline -->
+  <div id="view-guide" class="view">
+    <div class="page-title">Guide</div>
+    <div id="guideSub" class="g-sub"></div>
+    <div id="guideWrap" class="g-wrap scroller"><div id="guideCanvas" class="g-canvas"></div></div>
+  </div>
+
   <div id="view-library" class="view">
     <div class="page-title">Library</div>
     <div id="libraryBody"></div>
@@ -2695,7 +2744,7 @@
   var statusEl = document.getElementById('status');
   var LS = window.localStorage;
   var player = null, viewStack = ['home'], ctx = {};
-  var PLAYER_VERSION = '2026.10.07.2';
+  var PLAYER_VERSION = '2026.10.12.1';
 
   // Where our own site files (pair.html, party.json, player-version.json) live.
   // Served over http(s) the player is self-contained — any mirror works from its
@@ -2801,6 +2850,7 @@
     // must not sit behind a boot screen waiting for catalogues it won't show.
     if (name !== 'home'){ try { bootReady(); } catch(e){} }
     if (name === 'library'){ try { renderLibraryTab(); } catch(e){} }
+    if (name === 'guide'){ try { guideShown(); } catch(e){} }
     // back to a Discover grid that is still there keeps it, and its place in it
     if (name === 'search' && !(back && $id('discover') && disc && disc.opts)){ try { searchIdle(); } catch(e){} }
     // the rows list is built from live manifests: an add-on added since is in it; the console's
@@ -2824,7 +2874,7 @@
     document.body.classList.toggle('playing', name==='player');
     if (push !== false){ if (viewStack[viewStack.length-1] !== name) viewStack.push(name); }
     // light up the rail item for whichever tab this stack is rooted in
-    var tabs = { home:'navHome', search:'navSearch', library:'navLibrary', addons:'navAddons', settings:'navSettings' };
+    var tabs = { home:'navHome', guide:'navGuide', search:'navSearch', library:'navLibrary', addons:'navAddons', settings:'navSettings' };
     Object.keys(tabs).forEach(function(t){
       var b = document.getElementById(tabs[t]); if (b) b.classList.toggle('on', viewStack[0]===t);
     });
@@ -3421,6 +3471,17 @@
       if (inInput){ document.activeElement.blur(); } else { goBack(); }
       e.preventDefault(); return;
     }
+    // the Guide: ←/→ along a lane, ↑/↓ to the lane above/below by time, CH± a screen of lanes; → from the rail comes back
+    if (IS_TV && !inInput && !mod && ((k >= 37 && k <= 40) || k === 33 || k === 34)){
+      var gv = $id('view-guide'), gae = document.activeElement;
+      if (gv && gv.classList.contains('active') && gae){
+        if (gae.__g && gv.contains(gae) && guideKey(k, gae)){ e.preventDefault(); return; }
+        if (k === 39 && $id('rail') && $id('rail').contains(gae)){
+          var back2 = viewFocusTake(gv) || (guide.lanes[0] && guide.lanes[0][0]);
+          if (back2){ guideReveal(back2); e.preventDefault(); return; }
+        }
+      }
+    }
     // the TV settings console: ↑/↓ walk the section list, → steps into the open section, ← comes
     // back from its left edge; inside the pane ↑/↓ stay in the pane
     if (IS_TV && !inInput && k >= 37 && k <= 40){
@@ -3484,7 +3545,7 @@
       var bk = e.key || '';
       if (k===415 || k===179 || k===10252 || bk==='MediaPlay' || bk==='MediaPlayPause'){
         var pa = document.activeElement, pv = document.querySelector('.view.active');
-        if (pa && pa.classList && (pa.classList.contains('card') || pa.classList.contains('stream')) && pa.classList.contains('focusable')) pa.click();
+        if (pa && pa.classList && (pa.classList.contains('card') || pa.classList.contains('stream') || pa.classList.contains('gblock')) && pa.classList.contains('focusable')) pa.click();
         else if (pv && pv.id === 'view-detail' && $id('detPlay') && isShown($id('detPlay'))) $id('detPlay').click();
         e.preventDefault(); return;
       }
@@ -3520,6 +3581,7 @@
     cloudPushSoon('addons');
     manifestCache = {};                        // a changed add-on list invalidates cached manifests
     discInvalidate();                          // …and Discover's pickers
+    try { guideInvalidate(); } catch(e){}     // …and the Guide's schedule
     try { buildHomeRows(true); } catch(e){}   // any add-on change reshapes Home
   }
   function mirrorKv(key, json){ try { idbSave(key, json); } catch(e){} db8Save(key, json); }
@@ -6286,6 +6348,12 @@
     // faster than this device has measured its connection to be (Settings › Streams): no buffer saves such a row
     if (streamSlow(s, f)){ spec += '<i class="s-slow">may stall here</i>'; card.className += ' slow'; }
     if (s.behaviorHints && s.behaviorHints.notWebReady){ spec += '<i class="s-nwr">may not play here</i>'; card.className += ' nwr'; }
+    // an LG plays a DTS film's picture in silence: said before it is picked — or, with a computer converting sound for this TV, who will
+    if (streamNoSound(s)){
+      var hp = soundHelper();
+      if (hp){ spec += '<i class="s-snd">sound through ' + esc(soundHelperName(hp)) + '</i>'; card.className += ' snd'; }
+      else { spec += '<i class="s-nosnd">no sound on this TV</i>'; card.className += ' nosnd'; }
+    }
     card.innerHTML =
       (plate ? '<span class="s-plate"><b>' + plate.r + '</b>' + (plate.t ? '<i>' + plate.t + '</i>' : '') + '</span>'
              : '<span class="stream-play"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></span>') +
@@ -7179,10 +7247,15 @@
     var out = min ? streams.filter(function(s){ var r = streamRank(s); return !r || r >= min; }) : streams.slice();
     // rows the add-on marks not web-ready sink below the rest under every order — they rarely play in a browser engine
     var nwr = function(s){ return !!(s.behaviorHints && s.behaviorHints.notWebReady); };
+    // …and on an LG, the rows it would play in silence (DTS) sink under the ones it plays with sound, above those —
+    // unless a computer on the network converts their sound for this TV
+    var helper = !!soundHelper();
+    var sink = function(s){ return nwr(s) ? 2 : (!helper && streamNoSound(s)) ? 1 : 0; };
+    var bySink = function(list){ return list.filter(function(s){ return sink(s) === 0; }).concat(list.filter(function(s){ return sink(s) === 1; }), list.filter(function(s){ return sink(s) === 2; })); };
     var ordered;
-    if (sort !== 'quality' && sort !== 'size') ordered = out.filter(function(s){ return !nwr(s); }).concat(out.filter(nwr));
+    if (sort !== 'quality' && sort !== 'size') ordered = bySink(out);
     else {
-      var keyed = out.map(function(s, i){ return { s: s, i: i, r: streamRank(s), b: streamSizeBytes(s), n: nwr(s) ? 1 : 0 }; });
+      var keyed = out.map(function(s, i){ return { s: s, i: i, r: streamRank(s), b: streamSizeBytes(s), n: sink(s) }; });
       keyed.sort(function(x, y){
         if (x.n !== y.n) return x.n - y.n;
         if (sort === 'quality'){ if (y.r !== x.r) return y.r - x.r; }
@@ -7195,8 +7268,8 @@
     // under the ones that fit, whatever the order above chose (the not-web-ready rows stay last of all)
     if (slowMarkMode() !== 'move' || !bwGet()) return ordered;
     var fits = [], slow = [], last = [];
-    ordered.forEach(function(s){ (nwr(s) ? last : streamSlow(s) ? slow : fits).push(s); });
-    return fits.concat(slow, last);
+    ordered.forEach(function(s){ (sink(s) ? last : streamSlow(s) ? slow : fits).push(s); });
+    return fits.concat(slow, bySink(last));
   }
   // ---- what this connection carries: measured while something plays, remembered per device ----
   var BW_KEY = 'bw_v1';
@@ -7258,6 +7331,8 @@
     list.innerHTML = '<div class="streamsec" id="streamsLoading">' + streamSkeletons(4) + '</div>';
     list.parentNode.scrollTop = 0;
     show('streams'); setStatus('Loading streams…','info');
+    // an LG: whether a computer converts the sound it cannot play decides how DTS rows are marked (the list waits for nobody)
+    if (IS_WEBOS && relayWanted() && !soundHelper()) relayResolve().then(function(){ if (seq === openSeq) soundMarksRefresh(); });
 
     // the origin add-on always, then every other one that is switched on — one switched off feeds nothing
     var act = activeAddons();
@@ -7275,7 +7350,7 @@
       var sv = document.querySelector('.view.active'); if (!sv || sv.id !== 'view-streams') return;
       var row = apMode === 'same' ? list.querySelector('.stream.usual') : null;
       // never a row this connection cannot carry, nor one the add-on says will not play here, while another is there
-      if (!row) row = list.querySelector('.stream:not(.skel):not(.slow):not(.nwr)') || list.querySelector('.stream:not(.skel)');
+      if (!row) row = list.querySelector('.stream:not(.skel):not(.slow):not(.nwr):not(.nosnd)') || list.querySelector('.stream:not(.skel):not(.nosnd)') || list.querySelector('.stream:not(.skel)');
       if (!row) return;
       setStatus('Playing the best stream for you.', 'info');
       row.click();
@@ -7534,6 +7609,7 @@
     var detail = d ? playErrDetail(d.data) : '';
     setStatus(playErrorLine(code, detail), 'err');
     try { $id('puiSpin').style.display = 'none'; } catch(e){}
+    if (!tc && lastPlay) failWhy(seq, code, lastPlay.url);
   }
   // ---- desktop transcode. Chromium has no decoder for Dolby Digital (Plus), DTS or TrueHD on any desktop, and HEVC only
   // with hardware help; Nuvio's desktop app plays such files through its own libmpv. Nebula's shell carries FFmpeg
@@ -7592,7 +7668,7 @@
   async function tcProbe(url, c){
     var ctl = new AbortController(), timer = setTimeout(function(){ ctl.abort(); }, 25000);
     try {
-      var r = await fetch(location.origin + '/probe?src=' + encodeURIComponent(url) + tcHdrs(c && c.h), { signal: ctl.signal });
+      var r = await fetch(tcProbeUrl(url, c), { signal: ctl.signal });
       if (r.ok) return await r.json();
       if (c){ try { c.fail = await r.json(); } catch(e){ c.fail = { error: 'probe ' + r.status }; } }
       return null;
@@ -7628,7 +7704,7 @@
   /** Chromium would not take the file (a load that failed, or a media error later): true when the ladder took over. */
   function tcRefused(seq, code){
     var c = tcCheck;
-    if (!c || c.seq !== seq || tc || !(code >= 1000 && code < 5000)) return false;
+    if (!c || c.lan || c.seq !== seq || tc || !(code >= 1000 && code < 5000)) return false;
     c.refused = true; c.code = code;
     setStatus('Checking the file…', 'info');
     try { $id('puiSpin').style.display = 'block'; } catch(e){}
@@ -7642,6 +7718,64 @@
     if (f.notmedia) return 'This stream cannot play here — its host sent a page instead of the video. Try another source. (' + code + ')';
     if (c.info && !c.info.video) return 'This stream cannot play here — it has no video track this player can use. Try another source. (' + code + ')';
     return playErrorLine(code, '');
+  }
+  // ---- sound for the TV: an LG drops a DTS film's audio without a word (the picture plays, no audio track is listed —
+  // measured on his webOS 6 TV, 10-12). A Nebula desktop on the same network that is sharing with the TV (Play through
+  // your PC; found through the profile, relay_v1) converts it: the TV asks that computer — not its own shell — for the probe
+  // and the pieces, the picture copied as it is (HEVC 10-bit, HDR), the audio made Dolby Digital Plus, and plays them through
+  // the same converter session as the desktop, so seeking, the length, Resume and subtitles work as for any file. ----
+  var TV_AUDIO_BAD = { dts:1 };   // what the TV drops (TrueHD is not known to be: a silent TrueHD film comes through the silence watch)
+  /** The sharing computer, when it converts sound and answered lately (Settings › Play through your PC, not Off). */
+  function soundHelper(){
+    return (IS_TV && !IS_DESKTOP && relayLive && relayLive.sound && relayMode() !== 'off' && Date.now() - relayLive.at < 300000) ? relayLive : null;
+  }
+  function soundHelperName(h){ var n = String((h && h.name) || 'your PC'); return n.length > 22 ? n.slice(0, 21) + '…' : n; }
+  /** The engine takes what that computer makes: the codec it says it makes, in fragmented MP4. */
+  function soundCodecOk(h){ try { return !!(h && h.sound && window.MediaSource && MediaSource.isTypeSupported('audio/mp4; codecs="' + h.sound + '"')); } catch(e){ return false; } }
+  /** A plain file from the internet (never a playlist, a manifest, a key, a file on this network), on a TV with such a computer. */
+  function tvSoundCandidate(url, keys){
+    return !!ctx.soundVia && !keys && /^https?:\/\//i.test(url) && !/\.(mpd|m3u8?)(\?|#|$)/i.test(url) && relayWorth(url) && soundCodecOk(ctx.soundVia);
+  }
+  /** The picture can go through as it is (this TV's engine takes it in fragmented MP4): no computer re-encodes a film for a TV. */
+  var TV_COPY_CODECS = { vp9: 'vp09.00.10.08', av1: 'av01.0.08M.08' };   // besides H.264 and HEVC (tcHevcCodec)
+  function tvCopyOk(info){
+    var vc = String(info && info.video && info.video.codec || '').toLowerCase();
+    if (vc === 'h264') return true;
+    if (vc === 'hevc' || vc === 'h265') return tcHevcOk(info);
+    try { return !!(TV_COPY_CODECS[vc] && MediaSource.isTypeSupported('video/mp4; codecs="' + TV_COPY_CODECS[vc] + '"')); } catch(e){ return false; }
+  }
+  /** 'audio' when the track this TV would play is one it drops; '' otherwise. */
+  function tvSoundReason(info){
+    if (!info || !info.video || !info.audio || !info.audio.length || !tvCopyOk(info)) return '';
+    var pick = info.audio[tcPickAudio(info)] || {};
+    return TV_AUDIO_BAD[String(pick.codec || '').toLowerCase()] ? 'audio' : '';
+  }
+  /** The probe: on this computer's own shell (desktop), or the TV's sharing computer. */
+  function tcProbeUrl(url, c){
+    var q = 'src=' + encodeURIComponent(url) + tcHdrs(c && c.h);
+    return (c && c.lan) ? c.lan.base + '/relay/probe?' + q + '&k=' + encodeURIComponent(c.lan.token) : location.origin + '/probe?' + q;
+  }
+  /** A TV's media memory is small (a 4K remux runs 40–80 Mbps): pieces of ~40 MB, ~80 MB ahead, 15 s kept behind. */
+  function tvBytesPerSec(){ var b = tc && tc.info && tc.info.bitrate; return b > 0 ? b / 8 : 5e6; }
+  function tvPieceLen(){ return Math.max(4, Math.min(TC_LEN_RUN, Math.floor(40e6 / tvBytesPerSec()))); }
+  /** The computer stopped converting (gone from the network, its FFmpeg failed, the TV refused what it made): the file
+      plays on as it is from where it was — in silence, which the silence watch then says — and that computer is not asked
+      again for this file for two minutes. */
+  function tvSoundLost(why){
+    if (!tc || !tc.lan || !lastPlay) return;
+    var at = 0; try { at = video.currentTime || 0; } catch(e){}
+    ctx.soundOffFor = lastPlay.url; ctx.soundOffAt = Date.now();
+    ctx.swapAt = at > 1 ? at : 0;
+    setStatus(soundHelperName(tc.lan) + ' stopped converting the sound (' + (why || 'no answer') + ') — playing on without it.', 'err', 7000);
+    playUrl(lastPlay.url, lastPlay.keys, lastPlay.title, lastPlay.subs, lastPlay.mime);
+  }
+  /** The marks on a list already drawn, once the computer is known (it is looked for while the list loads). */
+  function soundMarksRefresh(){
+    var hp = soundHelper(); if (!hp) return;
+    Array.prototype.forEach.call(document.querySelectorAll('#streamList .stream.nosnd'), function(c){
+      c.classList.remove('nosnd'); c.classList.add('snd');
+      var i = c.querySelector('.s-nosnd'); if (i){ i.className = 's-snd'; i.textContent = 'sound through ' + soundHelperName(hp); }
+    });
   }
   /** The file's own name for a track, then the language, never a bare index. */
   function tcTrackLabel(a){
@@ -7665,12 +7799,17 @@
   }
   function tcMime(){
     var vc = String(tc.info.video.codec || '').toLowerCase();
-    var v = (vc === 'hevc' || vc === 'h265') && tc.vmode === 'copy' ? tcHevcCodec(tc.info) : 'avc1.64001f';
-    return 'video/mp4; codecs="' + v + ', mp4a.40.2"';
+    var v = (vc === 'hevc' || vc === 'h265') && tc.vmode === 'copy' ? tcHevcCodec(tc.info) : (tc.lan && TV_COPY_CODECS[vc]) || 'avc1.64001f';
+    return 'video/mp4; codecs="' + v + ', ' + (tc.lan ? tc.lan.sound : 'mp4a.40.2') + '"';
   }
   function tcSegUrl(t, len){
-    return location.origin + '/seg?src=' + encodeURIComponent(tc.src) + '&t=' + t + '&len=' + len + '&a=' + tc.a + '&v=' + tc.vmode +
+    var q = 'src=' + encodeURIComponent(tc.src) + '&t=' + t + '&len=' + len + '&a=' + tc.a + '&v=' + tc.vmode +
       '&vc=' + encodeURIComponent(tc.info.video.codec || '') + '&vh=' + (tc.info.video.height || 0) + '&st=' + (tc.info.start || 0) + tcHdrs(tc.h);
+    if (!tc.lan) return location.origin + '/seg?' + q;
+    // the TV's computer: the track's channels (5.1 at most comes back) and whether it already is what the TV takes
+    var a = (tc.info.audio || [])[tc.a] || {};
+    return tc.lan.base + '/relay/seg?' + q + '&ch=' + (a.channels || 0) + (String(a.codec || '').toLowerCase() === 'eac3' && tc.lan.sound === 'ec-3' ? '&ac=copy' : '') +
+      '&k=' + encodeURIComponent(tc.lan.token);
   }
   function tcWait(ms){ return new Promise(function(ok){ setTimeout(ok, ms); }); }
   function tcAhead(){
@@ -7678,7 +7817,10 @@
     return 0;
   }
   /** How far ahead the converter runs: Settings › Buffer ahead when set, the stock 45 s otherwise, never past what the element's memory took last time. */
-  function tcAheadGoal(){ return Math.min(Math.max(TC_AHEAD, bufferSecs()), (tc && tc.aheadCap) || 240); }
+  function tcAheadGoal(){
+    var goal = Math.min(Math.max(TC_AHEAD, bufferSecs()), (tc && tc.aheadCap) || 240);
+    return (tc && tc.lan) ? Math.max(8, Math.min(goal, Math.floor(80e6 / tvBytesPerSec()))) : goal;
+  }
   /** The element's media memory is full (a quota error mid-append): aim lower for the rest of this session, trim harder behind the playhead, and let the pump refill from tc.next on a clean parser. */
   async function tcQuota(){
     if (!tc) return;
@@ -7715,10 +7857,12 @@
         if (tc.flush){ tc.flush = false; await tcRemove(0, 1e9); }
         if (tcAhead() > tcAheadGoal()){ await tcWait(800); continue; }
         var ctl = new AbortController(); tc.ctl = ctl;
-        var from = tc.next, len = tc.warm ? TC_LEN_RUN : TC_LEN, got = 0, r = null;
+        var from = tc.next, len = tc.lan ? (tc.warm ? tvPieceLen() : Math.min(TC_LEN, tvPieceLen())) : (tc.warm ? TC_LEN_RUN : TC_LEN), got = 0, r = null;
         tc.pieceFrom = from;
         try { r = await fetch(tcSegUrl(from, len), { signal: ctl.signal }); } catch(e){ if (ctl.signal.aborted) continue; throw e; }
+        if (r.status === 503 && tc.lan && (tc.busy = (tc.busy || 0) + 1) < 20){ await tcWait(700); continue; }   // the computer is finishing the last piece (a seek)
         if (!r.ok) throw new Error('piece ' + r.status);
+        tc.busy = 0;
         var reader = r.body.getReader();
         try {
           while (true){
@@ -7737,10 +7881,14 @@
         var end = 0; try { var bb = tc.sb.buffered; for (var k = 0; k < bb.length; k++) if (bb.start(k) <= from + 0.5 && bb.end(k) > end) end = bb.end(k); } catch(e){}
         tc.next = end > from + 0.75 ? end - 0.25 : from + len; tc.warm = true;
         tcGapJump();
-        try { var b = tc.sb.buffered; if (b.length && b.start(0) < video.currentTime - 70) await tcRemove(0, video.currentTime - 50); } catch(e){}
+        var keep = tc.lan ? 15 : 50;
+        try { var b = tc.sb.buffered; if (b.length && b.start(0) < video.currentTime - keep - 20) await tcRemove(0, video.currentTime - keep); } catch(e){}
       }
     } catch(e){
-      if (tc === session && tc.gen === my) setStatus('This file could not be converted for playback (' + ((e && e.message) || e) + '). Try another source.', 'err');
+      if (tc === session && tc.gen === my){
+        if (tc.lan) tvSoundLost((e && e.message) || String(e));
+        else setStatus('This file could not be converted for playback (' + ((e && e.message) || e) + '). Try another source.', 'err');
+      }
     } finally { if (tc === session && tc.gen === my) tc.pumping = false; }
   }
   /** A piece whose first keyframe came after the second it was asked for (an MPEG-TS seeks by estimate) leaves a hole
@@ -7773,7 +7921,10 @@
   }
   /** The element refused what the shell produced — said in its own words, so it is never mistaken for a refused source. */
   function tcConvertLine(detail){ return 'This file could not be converted for playback (' + (detail || 'media error') + '). Try another source.'; }
-  function tcOnError(){ if (tc) setStatus(tcConvertLine('the player rejected the converted video: ' + (video.error && video.error.message || 'media error')), 'err'); }
+  function tcOnError(){
+    if (tc && tc.lan) return tvSoundLost('this TV refused it: ' + (video.error && video.error.message || 'media error'));
+    if (tc) setStatus(tcConvertLine('the player rejected the converted video: ' + (video.error && video.error.message || 'media error')), 'err');
+  }
   function tcSetAudio(i){
     if (!tc || i === tc.a) return;
     tc.a = i; tc.flush = true; tc.next = Math.max(0, Math.floor(video.currentTime)); tc.done = false; tc.warm = false;
@@ -7786,7 +7937,7 @@
     // hardware help); anything else — a refused container holding VP9, MPEG-4 part 2 in an AVI — is re-encoded
     var vc = String(info.video && info.video.codec || '').toLowerCase();
     var copyOk = vc === 'h264' || ((vc === 'hevc' || vc === 'h265') && tcHevcOk(info));
-    tc = { src: url, info: info, a: (info.a >= 0 && info.audio && info.audio[info.a]) ? info.a : tcPickAudio(info), vmode: (why === 'video' || !copyOk) ? 'h264' : 'copy',
+    tc = { src: url, info: info, a: (info.a >= 0 && info.audio && info.audio[info.a]) ? info.a : tcPickAudio(info), vmode: (!info.lan && (why === 'video' || !copyOk)) ? 'h264' : 'copy', lan: info.lan || null,
       ms: null, sb: null, ctl: null, obj: null, next: Math.max(0, Math.floor(startAt || 0)), pumping: false, done: false, flush: false, gen: 0, why: why, h: ctx.playHeaders || null, warm: false };
     var session = tc;
     player = tcShim();
@@ -8499,8 +8650,45 @@
     if (/\b(dts(?:-?hd)?(?:[ .-]?ma)?|dts:?x)\b/i.test(t)) return 'DTS';
     return '';
   }
+  // DTS by name, the ways release names write it (DTS, DTS-HD MA, DTS:X, DTS-ES, DTSHD, "dts" in a file name) — never
+  // inside another word (ADTS is how an AAC stream is framed; "products", "shorts")
+  var RE_DTS = /(^|[^a-z0-9])dts(?:[-.: ]?(?:hd|x|es|ma))*(?=[^a-z]|$)/i;
+  // any other sound a row names: a file with DTS AND one of these carries a track an LG can play
+  var RE_AUDIO_OTHER = /(^|[^a-z0-9])(ddp|dd\+|dd|e-?ac-?3|ac-?3|aac|opus|mp3|flac|dolby digital|true ?hd|atmos)(?=[^a-z]|$)/i;
+  function dtsNamed(text){ return RE_DTS.test(String(text || '')); }
+  /** webOS: a row whose only named sound is DTS — an LG lists no audio track for it and plays the picture in silence (10-12). */
+  function streamNoSound(s){
+    if (!IS_WEBOS || !s) return false;
+    var bh = s.behaviorHints || {}, t = (s.name || '') + '\n' + (s.title || s.description || '') + '\n' + (bh.filename || '');
+    return dtsNamed(t) && !RE_AUDIO_OTHER.test(t);
+  }
   function audioSilenceCheck(){
     if (audioSilentNoted || !video || video.paused || video.muted || video.volume === 0) return;
+    if (tc && tc.lan) return;                           // the TV's computer converted it: a TV counts no decoded bytes to judge by
+    // An LG TV plays a plain file in its own media pipeline, which counts no decoded bytes at all, so the test below can
+    // never fire there. What it does do is leave a track it cannot decode out of the list: a 2021 LG (webOS 6) lists NO
+    // audio track for a DTS film and plays it in silence, while Dolby Digital Plus is listed and plays (measured 10-12).
+    var srcMode = false;
+    try { srcMode = !!(player && player.getLoadMode && player.getLoadMode() === shaka.Player.LoadMode.SRC_EQUALS); } catch(e0){}
+    if (IS_WEBOS && srcMode){
+      if (video.currentTime < 4 || !video.audioTracks || video.audioTracks.length) return;
+      // a computer converts sound for this TV: whatever the row said, its probe tells whether the file HAS sound to bring back
+      var c0 = tcCheck;
+      if (c0 && c0.lan && c0.seq === playSeq && !tc && !c0.silentRestart){
+        if (c0.info === undefined){ tcCheckProbe(c0); return; }        // still asking: the next tick looks again
+        if (c0.info && c0.info.audio && c0.info.audio.length && tvCopyOk(c0.info)){
+          c0.silentRestart = true; audioSilentNoted = true;
+          c0.info.why = 'audio'; c0.info.lan = c0.lan; c0.restart(c0.info); return;
+        }
+      }
+      var tvHint = audioCodecHint(ctx.playRow || '');
+      if (!tvHint) return;                              // a file with no sound of its own is not a fault
+      audioSilentNoted = true;
+      setStatus('No sound: this TV cannot play this file’s audio (' + tvHint + '). Pick another stream — Dolby Digital Plus and AAC play here' +
+        (tvHint === 'DTS' && !soundHelper() ? ', or Nebula on your computer can convert it (Settings › Playback › Play through your PC).' : '.'), 'err', 9000);
+      stallOffer('sound');
+      return;
+    }
     if (typeof video.webkitAudioDecodedByteCount !== 'number' || video.currentTime < 4) return;
     if (video.webkitAudioDecodedByteCount > 0 || !(video.webkitVideoDecodedByteCount > 0)) return;
     // the desktop shell can do better than a message: a file the probe shows HAS audio, playing natively in silence
@@ -8523,7 +8711,8 @@
   function playErrorLine(code, detail){
     // 3016: the media element itself refused the source — a format this device cannot decode, or a host that
     // answered with a page instead of the file (add-ons flag such rows "not web-ready")
-    if (code === 3016) return 'This stream cannot play here — its format is not supported on this device, or its host would not serve it to this player. Try another source. (3016)';
+    // (failWhy then asks the host which of the two it was, and words it again)
+    if (code === 3016) return 'This stream would not start — its host may have refused it, or its format cannot play on this device. Try another source. (3016)';
     if (code === 1001) return 'The source did not answer with a stream — it may be down or expired. Try another source. (1001' + detail + ')';
     if (code === 1002) return 'The source would not let this player read it. Try another source. (1002)';
     return 'Failed to load (' + code + detail + ')';
@@ -8544,6 +8733,50 @@
       else if (typeof v === 'string' && v.trim() && !/^[a-z][a-z0-9+.-]*:\/\//i.test(v)) out.push(v.trim().slice(0, 90));
     }
     return out.length ? ' · ' + out.join(' · ') : '';
+  }
+  /** Does a plain file's host send it? 'serves', 'refused', 'page' (a web page in its place) or '' (nothing could tell).
+      Asked from here first. A host that refuses every request this page makes but not the TV's media pipeline (pixeldrain
+      answers the page "hotlink_detected" 403 for a file the TV then plays) is asked again through our server, which reads
+      a few bytes the way the built-in subtitle reader does: it gets the host's real answer. */
+  async function hostAnswer(url){
+    var own = 0, ct = '';
+    async function ask(u, opts, ms){
+      var ctl = window.AbortController ? new AbortController() : null, timer = setTimeout(function(){ if (ctl) ctl.abort(); }, ms);
+      try { opts.signal = ctl ? ctl.signal : undefined; opts.cache = 'no-store'; var r = await fetch(u, opts); return r; }
+      finally { clearTimeout(timer); }
+    }
+    try {
+      var r = await ask(url, { headers: { Range: 'bytes=0-15' } }, 8000);
+      own = r.status; ct = String(r.headers.get('content-type') || '');
+      try { if (r.body && r.body.cancel) r.body.cancel(); } catch(e){}
+    } catch(e){}
+    if (own >= 200 && own < 300) return /text\/html/i.test(ct) ? 'page' : 'serves';
+    try {
+      var r2 = await ask(CLOUD_BASE + '/v1/ranges?u=' + encodeURIComponent(url) + '&r=0-15', {}, 15000);
+      if (r2.ok) return 'serves';
+      if (r2.status === 502) return 'refused';      // the host would not hand our server those bytes either
+    } catch(e){}
+    return own >= 400 && own !== 429 ? 'refused' : '';
+  }
+  /** A stream that would not play, for good: a plain file's host is asked whether it refused the file — 3016 reads "its
+      format", and a viewer blames the format (10-12: the TV's "Dolby Digital Plus files do not play" was pixeldrain
+      refusing the rows it had rate-limited; the same Dolby files from it played) — and the next row in the list goes on
+      the pill, so one press of OK tries it. */
+  async function failWhy(seq, code, url){
+    if (seq !== playSeq || stall.failSeq === seq) return;
+    stall.failSeq = seq;
+    srcFailedNote(url);
+    if (code === 3016 && /^https?:\/\//i.test(url || '') && !/\.(mpd|m3u8)(\?|#|$)/i.test(url) && !(lastPlay && lastPlay.keys)){
+      var host = ''; try { host = new URL(url).hostname.replace(/^www\./, ''); } catch(e){}
+      var a = await hostAnswer(cleanUrl(url));
+      if (seq !== playSeq) return;
+      var line = '';
+      if (a === 'refused') line = (host || 'Its host') + ' would not send this file — it may be rate-limited, expired or taken down. Try another source. (3016)';
+      else if (a === 'page') line = (host || 'Its host') + ' answered with a web page instead of the video. Try another source. (3016)';
+      else if (a === 'serves') line = 'This file’s format cannot play on this ' + (IS_TV ? 'TV' : 'device') + '. Try another source. (3016)';
+      if (line) setStatus(line, 'err');
+    }
+    stallOffer('fail');
   }
   async function playUrl(rawUrl, clearKeys, title, subtitles, mimeType){
     // only a web address, a file this device picked (blob:) or the desktop's handle for one (local:N) is ever played: an
@@ -8586,20 +8819,24 @@
     }
     setStatus('Loading…','info');
     // Play through your PC (TV): the sharing computer, when one answers — settled before the engine is built
-    ctx.viaRelay = null; ctx.relayBase = ''; ctx.relaySrc = false;
+    ctx.viaRelay = null; ctx.relayBase = ''; ctx.relaySrc = false; ctx.soundVia = null;
     if (/^https?:\/\//i.test(rawUrl)){
       var rl = await relayResolve();
       if (seq !== playSeq) return;
-      if (rl){ ctx.viaRelay = rl; ctx.relayBase = rl.base; }
+      if (rl && relayMode() === 'auto'){ ctx.viaRelay = rl; ctx.relayBase = rl.base; }
+      // …and the same computer converts sound this TV cannot play (Auto and Sound only) — not for a file it just failed
+      if (rl && rl.sound && !(ctx.soundOffFor === rawUrl && Date.now() - (ctx.soundOffAt || 0) < 120000)) ctx.soundVia = rl;
     }
     player = new shaka.Player();
     try { await player.attach(video); } catch(e){}
     // Be tolerant of flaky CDNs (these are tokenised/proxied sports CDNs): more
     // segment/manifest retries with backoff, and don't reject live manifests
-    // over minBufferTime quirks.
+    // over minBufferTime quirks. 2026-10-08: the engine's own stallTimeout (5 s without a byte) dropped 10–20 MB 4K live
+    // pieces mid-download on a ~20 Mbps TV and fetched them again, so the pieces it needed came later still. A piece now
+    // gets 20 s of silence and a minute in all; a dead connection is still dropped by the stall rule.
     try {
       player.configure({
-        streaming: { retryParameters: { maxAttempts: 6, baseDelay: 500, backoffFactor: 1.5, timeout: 30000 } },
+        streaming: { retryParameters: { maxAttempts: 6, baseDelay: 500, backoffFactor: 1.5, timeout: 60000, stallTimeout: 20000, connectionTimeout: 15000 } },
         manifest: { retryParameters: { maxAttempts: 4, baseDelay: 500, backoffFactor: 1.5 }, dash: { ignoreMinBufferTime: true } }
       });
     } catch(e){}
@@ -8673,7 +8910,7 @@
     if (useMpv) ctx.mpvTriedFor = rawUrl;
     if (seq !== playSeq) return;
     if (ctx.tcForce){ tcInfo = ctx.tcForce; ctx.tcForce = null; }
-    else if (!useMpv && tcCandidate(rawUrl, clearKeys)){
+    else if (!useMpv && (tcCandidate(rawUrl, clearKeys) || tvSoundCandidate(rawUrl, clearKeys))){
       tcc = tcCheckStart(seq, cleanUrl(rawUrl), function(info){
         // the restart through the shell, from wherever playback had got to
         try { flushProgress(true); } catch(e){}
@@ -8683,13 +8920,26 @@
         var atNow = video.currentTime || 0;
         ctx.startOver = fresh && atNow < 1;
         if (atNow < 1 && swapAt){ ctx.swapAt = swapAt; ctx.swapName = swapName; }
-        setStatus(info.why === 'host' ? 'Fetching the stream through the app…'
+        // the TV's computer takes over a film that fell silent: from that second (the resume floor keeps the first minute unsaved)
+        if (info.lan && atNow > 1) ctx.swapAt = atNow;
+        setStatus(info.lan ? 'Bringing the sound in through ' + soundHelperName(info.lan) + '…' : info.why === 'host' ? 'Fetching the stream through the app…'
           : 'Converting the ' + (info.why === 'video' ? 'video' : (info.why === 'file' ? 'file' : 'audio')) + ' for this device…', 'info');
         playUrl(rawUrl, clearKeys, title, subtitles, mimeType);
       });
       var row = ctx.playRow || '';
+      tcc.lan = tcCandidate(rawUrl, clearKeys) ? null : ctx.soundVia;
+      if (tcc.lan){
+        // a TV: a row that names DTS is looked at before it plays (the probe says which track it would play); any other
+        // file plays at once, and the silence watch brings the computer in if the TV turns out to drop its sound
+        if (dtsNamed(row)){
+          setStatus('Checking the sound…', 'info');
+          tcInfo = await tcCheckProbe(tcc);
+          if (seq !== playSeq) return;
+          if (tcInfo && tvSoundReason(tcInfo)){ tcInfo.why = 'audio'; tcInfo.lan = tcc.lan; } else tcInfo = null;
+        }
+      }
       // (a playlist is never probed up front or beside playback: only a refusal brings the shell in)
-      if (!tcc.hls && (audioCodecHint(row) || (/\b(hevc|x265|h\.?265)\b/i.test(row) && !tcHevcOk()))){
+      else if (!tcc.hls && (audioCodecHint(row) || (/\b(hevc|x265|h\.?265)\b/i.test(row) && !tcHevcOk()))){
         setStatus('Checking the file…', 'info');
         tcInfo = await tcCheckProbe(tcc);
         if (seq !== playSeq) return;
@@ -8711,9 +8961,11 @@
       else await player.load(relayLoadUrl(cleanUrl(rawUrl), mimeType), null, mimeType || undefined);
       if (seq !== playSeq) return;
       loaded = true; playStarting = false;
+      applyBufferPolicy();   // live is known only now (Auto keeps a bigger lead on live streams)
       // the safety net: a file that looked ordinary but Chromium cannot voice restarts through the shell
       if (tcLater) tcCheckProbe(tcc).then(function(){ tcDecide(tcc, seq); });
       setStatus(swapName ? ('Switched to ' + swapName + '.') : startAt ? (mpvKeptPlace() ? 'This source can only play from the beginning — your place is kept.' : 'Resumed from ' + fmtT(startAt) + '.') : (fresh ? 'Starting from the beginning.' : 'Playing.'), 'ok');
+      if (tc && tc.lan) setStatus('Sound converted by ' + soundHelperName(tc.lan) + (startAt > 1 ? ' · from ' + fmtT(startAt) : '') + '.', 'ok', 6000);
       try { await video.play(); } catch(e){}
       $id('puiSpin').style.display = 'none';
       puiRefreshButtons(); puiTick();
@@ -8765,6 +9017,9 @@
         setStatus(why, 'err'); $id('puiSpin').style.display = 'none';
         return;
       }
+      // the TV's computer could not start the converted play (this TV's engine refused the pieces, the computer went away):
+      // the file plays as it is instead, and the silence watch says what is missing
+      if (tc && tc.lan){ tvSoundLost(String((err && (err.message || err.code)) || 'failed')); return; }
       var code=(err&&(err.code||err.message))||'unknown'; var extra=err?playErrDetail(err.data):'';
       // A load-time failure REJECTS load() and fires no error event, so the rescue has to be
       // asked for here as well as in handlePlaybackError — and first, for the reason given there.
@@ -8779,6 +9034,7 @@
         return playUrl(rawUrl, clearKeys, title, subtitles, mimeType);
       }
       setStatus(tc ? tcConvertLine(String(code) + extra) : playErrorLine(code, extra),'err'); $id('puiSpin').style.display='none';
+      if (!tc) failWhy(seq, code, rawUrl);
     }
   }
   function playStream(s){
@@ -9888,6 +10144,276 @@
     });
   }
 
+  // ---------- the Guide (TV): live and upcoming items on a timeline ----------
+  // Fed by ANY installed add-on whose catalog items carry start times (the "2026-10-07 20:00 UTC" form, an ISO `released`
+  // with a time, or isLive === true) — today that is a sports schedule. Movie/series/anime catalogs are never asked. With no
+  // such add-on the rail has no Guide at all. No add-on sends an end, so a sport's usual length stands in.
+  var G_HOUR = 300, G_LABEL = 220, G_LANE = 92, G_RULER = 48, G_MS = G_HOUR / 3600000;
+  var guide = { raw: [], at: 0, seq: 0, scanning: null, items: [], groups: [], avail: false, from: 0, to: 0,
+    lanes: [], last: '', sig: '', dirty: true };
+  var G_TIME_RE = /^\s*(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?\s*(UTC|GMT|Z)?\s*$/i;
+  function guideStart(m){
+    if (m.released && /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(String(m.released))){
+      var t = Date.parse(m.released); if (!isNaN(t)) return t;
+    }
+    var srcs = [m.releaseInfo, m.time];
+    for (var i = 0; i < srcs.length; i++){
+      var x = G_TIME_RE.exec(String(srcs[i] || ''));
+      if (x) return Date.UTC(+x[1], +x[2] - 1, +x[3], +x[4], +x[5], +(x[6] || 0));
+    }
+    return NaN;
+  }
+  /** isLive as a real true, or a releaseInfo that says only "LIVE" (a channel's "Live TV" is not an event). */
+  function guideIsLive(m){
+    if (m.isLive === true) return true;
+    return /^[^A-Za-z0-9]*live[^A-Za-z0-9]*$/i.test(String(m.releaseInfo || '')) && isNaN(guideStart(m));
+  }
+  function guideSport(m){
+    var g = m.genre || (m.genres && m.genres[0]) || '';
+    if (!g && m.description) g = String(m.description).split(/[\s·]/)[0];
+    return String(g || '');
+  }
+  var G_LEN = [
+    [/american football|nfl|ncaaf/, 210], [/baseball|mlb/, 180], [/basketball|nba|wnba|euroleague/, 150], [/hockey|nhl/, 150],
+    [/cricket/, 240], [/tennis/, 150], [/golf/, 300], [/motorsport|formula|f1|nascar|indycar|motogp/, 120],
+    [/fight|ufc|boxing|mma|wwe/, 180], [/rugby/, 110],
+    [/football|soccer|league|liga|serie|bundesliga|ligue|cup|brasileir|uefa|premier|mls/, 115]
+  ];
+  function guideMinutes(m){
+    var r = String(m.runtime || ''), h = /(\d+)\s*h/i.exec(r), mm = /(\d+)\s*m/i.exec(r);
+    if (/^\s*\d+\s*$/.test(r)) return +r;
+    if (h || (mm && /min/i.test(r))) return (h ? +h[1] * 60 : 0) + (mm ? +mm[1] : 0);
+    var s = guideSport(m).toLowerCase();
+    for (var i = 0; i < G_LEN.length; i++) if (G_LEN[i][0].test(s)) return G_LEN[i][1];
+    return 120;
+  }
+  function guideGroupName(m){
+    var g = (m.genre || (m.genres && m.genres[0]) || '').replace(/[^\w\s&'’().\-\/À-ɏ]/g, '').trim();
+    return g || 'Other';
+  }
+  /** The window's items, grouped, in lanes. Pure apart from `now`. */
+  function guideBuild(raw, now){
+    var seen = {}, items = [];
+    raw.forEach(function(r){
+      var m = r.meta; if (!m || !m.id) return;
+      var st = guideStart(m), live = guideIsLive(m);
+      if (isNaN(st) && !live) return;
+      var prev = seen[m.id];
+      if (prev && (!isNaN(prev.startAt) || isNaN(st))) return;   // the copy with a start time wins
+      var dur = guideMinutes(m) * 60000, start, end;
+      if (isNaN(st)){ start = now - 90 * 60000; end = now + 60 * 60000; }   // starts off the left edge: its start is unknown
+      else { start = st; end = st + dur; if (live) end = Math.max(end, now + 15 * 60000); }
+      var it = { id: m.id, meta: m, a: r.a, m: r.m, c: r.c, start: start, end: end, live: live, startAt: st, group: guideGroupName(m) };
+      if (prev) items.splice(items.indexOf(prev), 1, it); else items.push(it);
+      seen[m.id] = it;
+    });
+    items = items.filter(function(it){ return it.end > now && it.start < now + 48 * 3600000; });
+    var by = {}, order = [];
+    items.forEach(function(it){ if (!by[it.group]){ by[it.group] = []; order.push(it.group); } by[it.group].push(it); });
+    var groups = order.map(function(name){
+      var list = by[name].sort(function(x, y){ return x.start - y.start || String(x.meta.name).localeCompare(String(y.meta.name)); });
+      var lanes = [];
+      list.forEach(function(it){
+        for (var i = 0; i < lanes.length; i++){ var l = lanes[i]; if (l[l.length - 1].end <= it.start){ l.push(it); return; } }
+        lanes.push([it]);
+      });
+      return { name: name, lanes: lanes, live: list.some(function(x){ return x.live; }), first: list[0].start };
+    });
+    groups.sort(function(x, y){ return (y.live - x.live) || (x.first - y.first); });
+    return { items: items, groups: groups };
+  }
+  function guideTimeout(p, ms){ return Promise.race([p, new Promise(function(_, rej){ setTimeout(function(){ rej(new Error('timeout')); }, ms); })]); }
+  /** Asks every enabled add-on's non-film catalogs (first page) for items with start times; 5 minutes between asks. */
+  function guideScan(force){
+    if (!IS_TV) return Promise.resolve();
+    if (guide.scanning) return guide.scanning;
+    if (!force && guide.at && Date.now() - guide.at < 5 * 60000) return Promise.resolve();
+    var seq = ++guide.seq;
+    guide.scanning = (async function(){
+      var adds = activeAddons(), jobs = [];
+      var mans = await Promise.all(adds.map(function(a){ return guideTimeout(getManifest(a.url), 15000).catch(function(){ return null; }); }));
+      adds.forEach(function(a, i){
+        var m = mans[i]; if (!m || !a.base) return;
+        (m.catalogs || []).forEach(function(c){
+          if (catalogBrowsable(c) && !/^(movie|series|anime)$/i.test(c.type)) jobs.push({ a: a, m: m, c: c });
+        });
+      });
+      var raw = [], next = 0;
+      async function worker(){
+        while (next < jobs.length){
+          var j = jobs[next++];
+          try {
+            var d = await guideTimeout(getJson(j.a.base + '/catalog/' + encodeURIComponent(j.c.type) + '/' + encodeURIComponent(j.c.id) + '.json'), 15000);
+            var metas = (d && d.metas) || [];
+            // a catalog is a schedule only when something on its first page has a start time or is live
+            if (!metas.some(function(x){ return x && (!isNaN(guideStart(x)) || guideIsLive(x)); })) continue;
+            metas.forEach(function(x){ raw.push({ meta: x, a: j.a, m: j.m, c: j.c }); });
+          } catch(e){}
+        }
+      }
+      var ws = []; for (var w = 0; w < Math.min(4, jobs.length); w++) ws.push(worker());
+      await Promise.all(ws);
+      if (seq !== guide.seq) return;
+      guide.raw = raw; guide.at = Date.now();
+      guideRefresh();
+    })();
+    return guide.scanning.then(function(){ guide.scanning = null; }, function(){ guide.scanning = null; });
+  }
+  function guideInvalidate(){ guide.at = 0; guide.seq++; guide.scanning = null; setTimeout(function(){ guideScan(true); }, 1500); }
+  /** Recomputes the window (each minute and after a scan): the rail item comes and goes, an open guide redraws. */
+  function guideRefresh(){
+    var b = guideBuild(guide.raw, Date.now());
+    guide.items = b.items; guide.groups = b.groups;
+    guide.avail = IS_TV && b.items.length > 0;
+    var nav = $id('navGuide'); if (nav) nav.style.display = guide.avail ? '' : 'none';
+    var sig = b.items.map(function(it){ return it.id + '@' + it.start + '-' + it.end + (it.live ? 'L' : ''); }).join('|');
+    if (sig !== guide.sig){ guide.sig = sig; guide.dirty = true; }
+    var v = $id('view-guide');
+    if (v && v.classList.contains('active')){
+      if (!guide.avail){ setTab('home'); return; }
+      if (guide.dirty) guideRender(true); else guideNow();
+    }
+  }
+  function guideClockLine(){
+    var d = new Date(), days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    return days[d.getDay()] + ' · ' + fmtClock(d);
+  }
+  function guideX(t){ return G_LABEL + Math.round((Math.max(t, guide.from) - guide.from) * G_MS); }
+  function guideRender(keep){
+    var wrap = $id('guideWrap'), cv = $id('guideCanvas'); if (!wrap || !cv) return;
+    var ae = document.activeElement, keepId = keep && ae && ae.__g ? ae.__g.item.id : (keep ? guide.last : '');
+    var sl = wrap.scrollLeft, st = wrap.scrollTop;
+    var now = Date.now(), half = 30 * 60000;
+    guide.from = Math.floor(now / half) * half - half;
+    var to = guide.from + 6 * 3600000;
+    guide.items.forEach(function(it){ if (it.end > to) to = it.end; });
+    guide.to = Math.min(to, now + 48 * 3600000);
+    var width = G_LABEL + Math.ceil((guide.to - guide.from) * G_MS) + 60;
+    var h = '<div class="g-ruler" style="width:' + width + 'px"><div class="g-corner"></div>';
+    var nowX = guideX(now);
+    for (var t = guide.from; t <= guide.to; t += half){
+      var tx = guideX(t);   // a time under the Now tag keeps its tick, not its words
+      h += '<div class="g-tick" style="left:' + tx + 'px">' + (tx > nowX - 40 && tx < nowX + 110 ? '' : esc(fmtClock(new Date(t)))) + '</div>';
+    }
+    h += '<div class="g-nowtag" id="guideNowTag" style="left:' + guideX(now) + 'px">Now</div></div>';
+    var lanesTotal = 0;
+    guide.groups.forEach(function(g){
+      g.lanes.forEach(function(lane, li){
+        h += '<div class="g-lane' + (li === 0 ? ' g-first' : '') + '" style="width:' + width + 'px"><div class="g-label">' +
+          (li === 0 ? '<span>' + esc(g.name) + '</span>' : '') + '</div>';
+        lane.forEach(function(it){
+          var x0 = guideX(it.start), x1 = guideX(it.end), w = Math.max(64, x1 - x0 - 6);
+          var when = it.live ? '<span class="gb-dot"></span>Live' : esc(fmtClock(new Date(it.start)) + ' – ' + fmtClock(new Date(it.end)));
+          h += '<button class="gblock focusable' + (it.live ? ' live' : '') + '" data-key="g:' + esc(it.id) + '" style="left:' + x0 + 'px;width:' + w + 'px">' +
+            '<span class="gb-in"><span class="gb-name">' + esc(it.meta.name || it.id) + '</span><span class="gb-time">' + when + '</span></span></button>';
+        });
+        h += '</div>';
+        lanesTotal++;
+      });
+    });
+    h += '<div class="g-now" id="guideNowLine" style="left:' + guideX(now) + 'px;top:' + G_RULER + 'px;height:' + (lanesTotal * G_LANE) + 'px"></div>';
+    cv.style.width = width + 'px';
+    cv.innerHTML = h;
+    // wire the blocks: lane index, place in lane, item
+    guide.lanes = [];
+    var laneEls = cv.querySelectorAll('.g-lane'), li2 = 0, found = null;
+    guide.groups.forEach(function(g){
+      g.lanes.forEach(function(lane){
+        var els = laneEls[li2].querySelectorAll('.gblock'), row = [];
+        lane.forEach(function(it, k){
+          var el = els[k]; el.__g = { lane: li2, idx: k, item: it }; row.push(el);
+          el.onclick = function(){ guideOpen(it); };
+          el.addEventListener('focus', function(){ guide.last = it.id; });
+          if (keepId && it.id === keepId) found = el;
+        });
+        guide.lanes.push(row); li2++;
+      });
+    });
+    guide.dirty = false;
+    $id('guideSub').textContent = guideClockLine();
+    wrap.scrollLeft = sl; wrap.scrollTop = st;
+    if (found && keep && ae && ae.__g){ try { found.focus({ preventScroll: true }); } catch(e){ found.focus(); } }
+    return found;
+  }
+  /** The minute tick on an open guide: the now line, the tag and the clock move; nothing is rebuilt. */
+  function guideNow(){
+    var now = Date.now(), ln = $id('guideNowLine'), tg = $id('guideNowTag');
+    if (ln) ln.style.left = guideX(now) + 'px';
+    if (tg) tg.style.left = guideX(now) + 'px';
+    var sub = $id('guideSub'); if (sub) sub.textContent = guideClockLine();
+  }
+  function guideOpen(it){
+    if (it.a){ ctx.addon = it.a; ctx.manifest = it.m; ctx.catalogs = (it.m && it.m.catalogs) || []; ctx.catalog = it.c; }
+    openItem(it.meta);
+  }
+  /** Keeps a block in view: its start an hour in from the labels when it would sit off either side; its lane under the ruler. */
+  function guideReveal(el){
+    var wrap = $id('guideWrap'); if (!wrap || !el) return;
+    try { el.focus({ preventScroll: true }); } catch(e){ el.focus(); }
+    var vw = wrap.clientWidth - G_LABEL, x0 = el.offsetLeft - G_LABEL, sl = wrap.scrollLeft;
+    if (x0 < sl || x0 > sl + vw - 160) wrap.scrollLeft = Math.max(0, x0 - G_HOUR);
+    var lane = el.parentNode, top = lane.offsetTop, st = wrap.scrollTop;
+    if (top < st + G_RULER) wrap.scrollTop = top - G_RULER;
+    else if (top + G_LANE > st + wrap.clientHeight) wrap.scrollTop = top + G_LANE - wrap.clientHeight;
+  }
+  /** The block in lane `li` nearest in time to what is lit: the most overlap with its visible span, else the nearest start. */
+  function guidePick(li, it){
+    var row = guide.lanes[li]; if (!row || !row.length) return null;
+    var wrap = $id('guideWrap'), viewFrom = guide.from + (wrap ? wrap.scrollLeft : 0) / G_MS;
+    var vs = Math.max(it.start, viewFrom), ve = Math.max(it.end, vs + 60000), best = null, bo = -Infinity, bd = Infinity;
+    row.forEach(function(el){
+      var b = el.__g.item, ov = Math.min(ve, b.end) - Math.max(vs, b.start);
+      if (ov > 0){ if (ov > bo){ bo = ov; best = el; } return; }
+      if (bo > 0) return;
+      var d = b.start >= ve ? b.start - ve : vs - b.end;
+      if (d < bd){ bd = d; best = el; }
+    });
+    return best;
+  }
+  /** The remote on a block. Returns true when it took the key. */
+  function guideKey(k, ae){
+    var g = ae.__g; if (!g) return false;
+    var row = guide.lanes[g.lane];
+    if (k === 37){
+      if (g.idx > 0) guideReveal(row[g.idx - 1]);
+      else { var nv = $id('navGuide'); if (nv) nv.focus(); }
+      return true;
+    }
+    if (k === 39){ if (g.idx < row.length - 1) guideReveal(row[g.idx + 1]); return true; }
+    var step = (k === 38) ? -1 : (k === 40) ? 1 : 0;
+    if (k === 33 || k === 34){
+      var wrap = $id('guideWrap'), n = Math.max(1, Math.floor(((wrap ? wrap.clientHeight : 800) - G_RULER) / G_LANE) - 1);
+      step = (k === 34 ? 1 : -1) * n;
+    }
+    if (!step) return false;
+    var li = Math.max(0, Math.min(guide.lanes.length - 1, g.lane + step));
+    if (li !== g.lane){ var t = guidePick(li, g.item); if (t) guideReveal(t); }
+    return true;
+  }
+  /** Opening the guide: the first live block (top-most), else the earliest; the now line about an hour in. */
+  function guideShown(){
+    if (!guide.avail){ guideScan(false); return; }
+    var gv = $id('view-guide'), wrap = $id('guideWrap');
+    if (guide.dirty || !$id('guideCanvas').firstChild) guideRender(false); else guideNow();
+    // back to the guide (a tab switch or Back from a title page): the block that was lit, if it is still on
+    var was = viewFocusTake(gv);
+    if (was && was.__g){ guideReveal(was); return; }
+    var land = null, early = null;
+    guide.lanes.forEach(function(row){ row.forEach(function(el){
+      var it = el.__g.item;
+      if (!land && it.live) land = el;
+      if (!early || it.start < early.__g.item.start) early = el;
+    }); });
+    land = land || early;
+    if (wrap){ wrap.scrollTop = 0; wrap.scrollLeft = Math.max(0, Math.round((Date.now() - guide.from) * G_MS) - G_HOUR); }
+    if (land) guideReveal(land);
+  }
+  if (IS_TV){
+    setTimeout(function(){ guideScan(false); }, 4000);
+    setInterval(function(){ if (guide.raw.length || guide.avail) guideRefresh(); }, 60000);
+    setInterval(function(){ if (!document.hidden) guideScan(false); }, 5 * 60000 + 1000);
+  }
+
   // ---------- Seekr: ready-made scrub pictures with the viewer's OWN key ----------
   // seekr.tv keeps a picture every ~10 s of films and episodes, looked up by the title's id and the length of what plays.
   // Each viewer brings their own free key (their terms allow no key in public apps, and each key has a small daily
@@ -10202,6 +10728,19 @@
     if (hadFocus) inp.focus();
   }
 
+  /** webOS: the TV leaves out a sound track it cannot play (DTS) and may list the others the file carries (AC-3 beside it).
+      Should none of those be switched on, the one in the preferred language — else the first — is. Once a play. */
+  var tvAudioPicked = false;
+  function webosAudioPick(){
+    if (tvAudioPicked || !IS_WEBOS || tc || !video.audioTracks || !video.audioTracks.length || video.currentTime < 1) return;
+    tvAudioPicked = true;
+    var at = video.audioTracks, i, want = '';
+    for (i = 0; i < at.length; i++) if (at[i].enabled) return;
+    try { want = String(prefLang('audioLang') || '').slice(0, 2).toLowerCase(); } catch(e){}
+    var pick = 0;
+    for (i = 0; i < at.length && want; i++) if (String(at[i].language || '').slice(0, 2).toLowerCase() === want){ pick = i; break; }
+    try { at[pick].enabled = true; } catch(e){}
+  }
   var lastTickT = -1, progTicks = 0;
   function puiTick(){
     if (!player) return;
@@ -10210,6 +10749,7 @@
     // much-later blip can be retried once more.
     if (!video.paused && video.currentTime > lastTickT + 0.4) didRetry = false;
     lastTickT = video.currentTime;
+    try { webosAudioPick(); } catch(e){}
     try { audioSilenceCheck(); } catch(e){}
     var r = puiRange(), t = video.currentTime;
     var span = r.end - r.start;
@@ -10226,7 +10766,7 @@
     progTicks++;
     if (!video.paused && progTicks % 10 === 0) flushProgress(false);
     if (!video.paused && progTicks % 10 === 5) bwSample();                 // what this line carries: the list's marks and the player's own picks
-    if (stall.shownAt && Date.now() - stall.shownAt > 60000) srcHide();   // an offer nobody took lapses once playback has settled
+    if (stall.shownAt && stall.why !== 'fail' && Date.now() - stall.shownAt > 60000) srcHide();   // an offer nobody took lapses once playback has settled (one for a stream that never played stays)
     sleepTick();
     if (!live && span > 0) skipTick(t);
     // a sleep timer set to the end of this episode means exactly that: nothing
@@ -10464,7 +11004,8 @@
     if (stall.total) row('Stalls', stall.total + ' this play', stall.total > 2);
     if (video.playbackRate !== 1) row('Speed', video.playbackRate + '×');
     if (lastPlay && lastPlay.keys) row('Encryption', 'Decrypted on device');
-    if (ctx.viaRelay) row('Via', ctx.viaRelay.name + ' on your network');
+    if (ctx.viaRelay && !(tc && tc.lan)) row('Via', ctx.viaRelay.name + ' on your network');
+    if (tc && tc.lan){ var ta = (tc.info.audio || [])[tc.a] || {}; row('Sound', 'Converted by ' + soundHelperName(tc.lan) + ' · ' + (FF_AUDIO_NAMES[String(ta.codec || '').toLowerCase()] || String(ta.codec || '').toUpperCase()) + ' → ' + (tc.lan.sound === 'ec-3' ? 'Dolby Digital Plus' : tc.lan.sound)); }
     if (subOffset || subScale !== 1) row('Subtitle timing', (subOffset > 0 ? '+' : (subOffset < 0 ? '−' : '')) + Math.abs(subOffset).toFixed(1) + ' s' + (subScale !== 1 ? ' · speed matched' : '') + (subSynced ? ' · set automatically' : ''));
     var html = '';
     out.forEach(function(r){
@@ -11220,13 +11761,18 @@
       return;
     }
     if (!player || player.tc) return;
-    var n = bufferSecs(), st = BUFFER_STEPS[n], d = null;
+    var n = bufferSecs(), st = BUFFER_STEPS[n], d = null, live = false;
     try { d = shaka.util.PlayerConfiguration.createDefault().streaming; } catch(e){}
+    try { live = !!(player.isLive && player.isLive()); } catch(e3){}
     try {
+      // Auto on a live stream: the engine's 10 s is about one piece of a 10 s-segment feed, so one slow piece stalls the
+      // picture. Aim for 30 s (the live edge caps it) and fetch two pieces side by side.
       player.configure({ streaming: st ? { bufferingGoal: n, rebufferingGoal: st[0], segmentPrefetchLimit: st[1] }
+        : live ? { bufferingGoal: LIVE_AUTO_AHEAD, rebufferingGoal: d ? d.rebufferingGoal : 0, segmentPrefetchLimit: 2 }
         : { bufferingGoal: d ? d.bufferingGoal : 10, rebufferingGoal: d ? d.rebufferingGoal : 0, segmentPrefetchLimit: d ? d.segmentPrefetchLimit : 1 } });
     } catch(e2){}
   }
+  var LIVE_AUTO_AHEAD = 30;
   /** How many segments the engine fetches side by side (Buffer ahead's second dial); 0 outside the engine's own playback. */
   function bufferPrefetch(){
     try { if (player && player.getLoadMode && player.getLoadMode() === shaka.Player.LoadMode.MEDIA_SOURCE) return Number(player.getConfiguration().streaming.segmentPrefetchLimit) || 0; } catch(e){}
@@ -11250,7 +11796,8 @@
   // and a relay that stops answering mid-stream is dropped for two minutes while the engine carries on direct.
   var relayApi = (IS_DESKTOP && window.nebulaDesktop.relay) ? window.nebulaDesktop.relay : null;
   var relayDoc = null, relayLive = null, relayDeadAt = 0, relayPullAt = 0, relayShare = null, relayPubSig = '', relayPubOn = false;
-  function relayMode(){ return getPrefs().relay === 'off' ? 'off' : 'auto'; }
+  // auto = every stream through the computer + its sound conversion; sound = only the sound this TV cannot play; off = neither
+  function relayMode(){ var v = getPrefs().relay; return v === 'off' ? 'off' : v === 'sound' ? 'sound' : 'auto'; }
   function relayWanted(){ return IS_TV && !IS_DESKTOP && location.protocol !== 'https:' && relayMode() !== 'off'; }
   function relayLoadDoc(){ try { relayDoc = JSON.parse(LS.getItem('relay_v1') || 'null'); } catch(e){ relayDoc = null; } if (relayDoc && typeof relayDoc !== 'object') relayDoc = null; }
   function relaySaveDoc(){ try { if (relayDoc) LS.setItem('relay_v1', JSON.stringify(relayDoc)); else LS.removeItem('relay_v1'); } catch(e){} }
@@ -11290,7 +11837,11 @@
         var base = 'http://' + h + ':' + d.port;
         fetchTimeout(base + '/relay/healthz?k=' + encodeURIComponent(d.token), 1800)
           .then(function(r){ return r && r.ok ? r.json() : null; })
-          .then(function(j){ if (j && j.ok) finish({ base: base, token: d.token, name: d.name || j.name || 'Your PC', at: Date.now() }); else miss(); }, miss);
+          .then(function(j){
+            // what the computer makes for sound this TV cannot play (an older desktop says nothing: no conversion)
+            var snd = j && j.sound && /^[a-z0-9.-]{2,16}$/i.test(String(j.sound.codec || '')) ? String(j.sound.codec) : '';
+            if (j && j.ok) finish({ base: base, token: d.token, name: d.name || j.name || 'Your PC', at: Date.now(), sound: snd }); else miss();
+          }, miss);
       });
     });
   }
@@ -11341,7 +11892,9 @@
     if (IS_TV && !IS_DESKTOP){
       var line;
       if (relayMode() === 'off') line = 'Off — the TV fetches video itself';
-      else if (relayLive) line = relayLive.name + ' is sharing · ' + relayLive.base.replace(/^http:\/\//, '');
+      else if (relayLive && relayMode() === 'sound') line = relayLive.sound ? relayLive.name + ' converts sound this TV cannot play (DTS) · ' + relayLive.base.replace(/^http:\/\//, '')
+        : relayLive.name + ' is sharing, but its Nebula is too old to convert sound · Update it';
+      else if (relayLive) line = relayLive.name + ' is sharing' + (relayLive.sound ? ' and converts sound this TV cannot play (DTS)' : '') + ' · ' + relayLive.base.replace(/^http:\/\//, '');
       else if (relayUsable(relayDoc)) line = (relayDoc.name || 'Your PC') + ' was sharing but does not answer right now · Check it is on, and on the same network';
       else if (!cloudLinked()) line = 'Sign in here and on the computer — that is how the TV finds it';
       else line = 'No computer is sharing right now · Turn it on in Nebula for Windows or Linux › Settings › Playback';
@@ -11351,7 +11904,7 @@
       var s = relayShare || relayApi.info() || {};
       if (s.error) sh.textContent = 'Could not share: ' + s.error;
       else if (s.on) sh.textContent = 'Sharing as ' + (s.name || 'this PC') + (s.hosts && s.hosts.length ? ' · ' + s.hosts.join(' · ') + ' port ' + s.port : '') + (s.bytes ? ' · holding ' + fmtMB(s.bytes) : '') + (cloudLinked() ? '' : ' · Sign in so your TV can find this computer');
-      else sh.textContent = 'Fetch and hold video for the TV on your network · Both signed in to the same profile · Windows may ask to allow Nebula on your network';
+      else sh.textContent = 'Fetch and hold video for the TV on your network, and convert sound it cannot play (DTS) · Both signed in to the same profile · Windows may ask to allow Nebula on your network';
     }
   }
   function relayShareChips(){
@@ -11365,7 +11918,7 @@
     tvRow.style.display = tvOn ? '' : 'none';
     shRow.style.display = relayApi ? '' : 'none';
     if (tvOn){
-      segChips('setRelay', [['Auto','auto'], ['Off','off']], relayMode(), function(v){
+      segChips('setRelay', [['Auto','auto'], ['Sound only','sound'], ['Off','off']], relayMode(), function(v){
         setPref('relay', v); relayLive = null; relayDeadAt = 0;
         if (v !== 'off') relayResolve(); else relayStatusRender();
       });
@@ -11443,7 +11996,7 @@
   function puiReset(title){
     puiState.total = getPrefs().timeDisplay === 'total';   // Settings › Right time pill
     $id('puiTitle').textContent = title || '';
-    audioSilentNoted = false;
+    audioSilentNoted = false; tvAudioPicked = false;
     $id('puiSub').textContent = '';
     $id('puiSrc').textContent = ''; $id('puiClock').textContent = '';
     $id('puiSpeedVal').textContent = '1×';
@@ -11792,23 +12345,29 @@
     return ctx.playSig || null;
   }
   /** The next row after the one playing, round the list: not its twin, not one the add-on says will not play here, and one this connection carries before one it cannot. */
-  function stallPick(cands, curUrl, curSig){
+  function stallPick(cands, curUrl, curSig, loose){
     var n = cands.length, start = 0, i, pass, k;
     for (i = 0; i < n; i++) if (cands[i].s.url === curUrl){ start = i + 1; break; }
-    for (pass = 0; pass < 2; pass++){
+    // loose (after a stream that would not play at all): a third round takes a row its add-on calls not web-ready — some
+    // add-ons say that of every row they have, and such files often play on a TV (HdHub's did, 10-12) — and the same file
+    // from another host, which is just what a refused file wants
+    for (pass = 0; pass < (loose ? 3 : 2); pass++){
       for (k = 0; k < n; k++){
         var c = cands[(start + k) % n];
-        if (c.s.url === curUrl) continue;
-        if (c.s.behaviorHints && c.s.behaviorHints.notWebReady) continue;
-        if (curSig && isTwin(c.s, curSig, c.a)) continue;
+        if (c.s.url === curUrl || srcFailed.urls[c.s.url]) continue;
+        if (pass < 2 && c.s.behaviorHints && c.s.behaviorHints.notWebReady) continue;
+        if (pass < 2 && streamNoSound(c.s) && !soundHelper()) continue;      // an LG plays it in silence (DTS)
+        if (pass < 2 && curSig && isTwin(c.s, curSig, c.a)) continue;
         if (pass === 0 && streamSlow(c.s)) continue;
         return c;
       }
     }
     return null;
   }
-  async function stallOffer(){
+  /** why: '' = it keeps stalling, 'fail' = it would not play at all, 'sound' = it plays with no sound. */
+  async function stallOffer(why){
     if (party && !party.isHost) return;
+    if (stall.busy) return;
     stall.busy = true;
     var my = playSeq, c = null;
     try {
@@ -11816,23 +12375,31 @@
       if (cur && cur.id){
         var cands = stallCandidates(cur);
         if (!cands.length) cands = await fetchSiblings(cur.type, cur.id);
-        if (my === playSeq) c = stallPick(cands, curUrl, stallCurSig(cands, curUrl));
+        if (my === playSeq) c = stallPick(cands, curUrl, stallCurSig(cands, curUrl), why === 'fail');
       }
     } catch(e){}
     stall.busy = false;
     if (my !== playSeq) return;
     stall.offered = true;
-    if (c) srcShow(c);
-    else setStatus('This source keeps stalling — another stream from the list may do better.', 'info', 7000);
+    if (c) srcShow(c, why);
+    else if (!why) setStatus('This source keeps stalling — another stream from the list may do better.', 'info', 7000);
+  }
+  // the rows that would not play for this title, this sitting: the pill never offers one again, so a press cannot bounce
+  // between two refused files
+  var srcFailed = { id: '', urls: {} };
+  function srcFailedNote(url){
+    var id = curPlay ? curPlay.id : '';
+    if (srcFailed.id !== id) srcFailed = { id: id, urls: {} };
+    if (url) srcFailed.urls[url] = 1;
   }
   function srcName(c){
     var n = cleanStreamName(c.s.name, c.a && c.a.name) || (c.a && c.a.name) || 'another stream';
     return n.length > 30 ? n.slice(0, 29) + '…' : n;
   }
-  function srcShow(c){
-    stall.sib = c; stall.shownAt = Date.now();
+  function srcShow(c, why){
+    stall.sib = c; stall.shownAt = Date.now(); stall.why = why || '';
     var b = $id('srcBtn');
-    b.textContent = 'Keeps stalling · Try ' + srcName(c);
+    b.textContent = (why === 'fail' ? 'Won’t play' : why === 'sound' ? 'No sound' : 'Keeps stalling') + ' · Try ' + srcName(c);
     b.classList.add('show');
     // the pill takes focus unless the viewer is busy in the controls, so OK switches
     var ae = document.activeElement;

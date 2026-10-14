@@ -37,6 +37,9 @@ const entries = new Map();     // address → entry: what is known and held of o
 const lru = new Map();         // "address#piece" → entry, oldest first
 const families = new Map();    // address with its counter blanked → { delta, top, guessTop, edge, edgeAt }
 const playlists = new Map();   // segment address → the address that follows it in its playlist
+// other services on this same token-gated listener (tvsound.js: the TV's sound conversion): their routes, what they add to
+// healthz (so the TV knows what this computer offers), and what must stop with sharing
+const routes = new Map(), stopHooks = []; let healthExtra = () => ({});
 
 class RelayError extends Error { constructor(status, msg, pre) { super(msg); this.status = status; this.pre = !!pre; } }
 
@@ -428,7 +431,11 @@ function handle(req, res) {
   cors(res);
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
   if (!tokenOk(u.searchParams.get('k'))) { res.writeHead(401, { 'Content-Type': 'text/plain' }); res.end('token'); return; }
-  if (u.pathname === '/relay/healthz') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: true, name, v: 1 })); return; }
+  if (u.pathname === '/relay/healthz') {
+    Promise.resolve().then(healthExtra).catch(() => ({})).then((x) => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(Object.assign({ ok: true, name, v: 1 }, x || {}))); });
+    return;
+  }
+  if (routes.has(u.pathname)) return routes.get(u.pathname)(req, res, u);
   if (u.pathname === '/relay/stats') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(info())); return; }
   if (u.pathname !== '/relay' || (req.method !== 'GET' && req.method !== 'HEAD')) { res.writeHead(404); res.end(); return; }
   const target = u.searchParams.get('u') || '';
@@ -476,6 +483,7 @@ function stop() {
   if (starting) return starting.then(() => stop(), () => stop());   // let the bind finish, then let go of it
   if (stateFile) writeState(stateFile, { token, on: false });
   clearInterval(sweeper); sweeper = null;
+  stopHooks.forEach((f) => { try { f(); } catch (e) {} });
   entries.forEach((e) => forget(e));
   families.clear(); playlists.clear(); served = 0;
   const s = server; server = null; port = 0;
@@ -483,4 +491,7 @@ function stop() {
   sockets.forEach((k) => { try { k.destroy(); } catch (e) {} }); sockets.clear();
   return new Promise((ok) => s.close(() => ok(info())));
 }
-module.exports = { start, stop, info, wasOn, CHUNK, _familyOf: familyOf, _privateTarget: privateTarget };
+/** A service on this listener: `path` answered by `fn(req, res, url)` once the token checked out. */
+function route(p, fn) { routes.set(p, fn); }
+module.exports = { start, stop, info, wasOn, route, onStop: (f) => stopHooks.push(f), health: (f) => { healthExtra = f; }, isOn: () => !!server,
+  privateTarget, CHUNK, _familyOf: familyOf, _privateTarget: privateTarget };

@@ -16,7 +16,7 @@
 // seconds: the header, the index at the end, the tracks (measured on a 4 GB MKV: six requests per piece, five of
 // them identical, 4–9 s before the first byte of video). What FFmpeg read at each offset is kept for the file being
 // played, so from the second piece on only the piece's own bytes come from the host.
-const http = require('http'), https = require('https'), crypto = require('crypto');
+const http = require('http'), https = require('https'), crypto = require('crypto'), dns = require('dns');
 
 const KEY = crypto.randomBytes(16).toString('hex');
 const MAX_ENTRIES = 64;                    // files FFmpeg may be reading at once, and a margin
@@ -29,6 +29,8 @@ const HOP = /^(host|connection|keep-alive|proxy-[a-z-]*|te|trailer|transfer-enco
 const PASS = ['content-type', 'content-length', 'content-range', 'accept-ranges', 'last-modified', 'etag', 'content-encoding'];
 // connections to a host are kept for the next request (a redirect's answer, a playlist, a read that ran to the end)
 const AGENTS = { 'http:': new http.Agent({ keepAlive: true, maxSockets: 8 }), 'https:': new https.Agent({ keepAlive: true, maxSockets: 8 }) };
+// a file the TV asked for (tvsound.js) is read on connections of its own: each one went to an address the guard passed
+const GUARDED = { 'http:': new http.Agent({ keepAlive: true, maxSockets: 8 }), 'https:': new https.Agent({ keepAlive: true, maxSockets: 8 }) };
 const LOG = !!process.env.NEBULA_SOURCE_LOG;
 
 let server = null, port = 0, listening = null, agent = 'NebulaPlayer';
@@ -57,14 +59,15 @@ function start() {
   });
   return listening;
 }
-/** The loopback address FFmpeg reads `src` from; `headers` go to the host with every request. */
-async function urlFor(src, headers, ua) {
+/** The loopback address FFmpeg reads `src` from; `headers` go to the host with every request. `guard(address)` true = refused:
+    the TV's files may only come from the internet, never from this machine or the network it sits on (checked on every hop). */
+async function urlFor(src, headers, ua, guard) {
   if (ua) agent = String(ua);
   await start();
   const hd = cleanHeaders(headers);
-  const id = crypto.createHash('sha1').update(src + '\n' + JSON.stringify(hd)).digest('hex').slice(0, 24);
+  const id = crypto.createHash('sha1').update(src + '\n' + JSON.stringify(hd) + (guard ? '\ng' : '')).digest('hex').slice(0, 24);
   let e = entries.get(id);
-  if (!e) { e = { src, headers: hd, final: '', finalAt: 0, used: 0, size: 0, type: '', pre: null }; entries.set(id, e); }
+  if (!e) { e = { src, headers: hd, final: '', finalAt: 0, used: 0, size: 0, type: '', pre: null, guard: typeof guard === 'function' ? guard : null }; entries.set(id, e); }
   touch(e);
   if (entries.size > MAX_ENTRIES) { let old = null, t = Infinity; entries.forEach((x, k) => { if (x.used < t) { t = x.used; old = k; } }); entries.delete(old); }
   return 'http://127.0.0.1:' + port + '/s/' + KEY + '/' + id;
@@ -87,12 +90,24 @@ function keyOk(k) {
   try { return crypto.timingSafeEqual(Buffer.from(k), Buffer.from(KEY)); } catch (e) { return false; }
 }
 /** One request to the host, redirects followed (the add-on's credentials stay with the host they were meant for). */
-function open(url, headers, method, hop, cb) {
+function open(url, headers, method, hop, cb, guard) {
   let u; try { u = new URL(url); } catch (e) { return cb(new Error('bad address')); }
   if (!/^https?:$/.test(u.protocol)) return cb(new Error('not http'));
   if (/^(127\.0\.0\.1|localhost|\[::1\])$/i.test(u.hostname) && Number(u.port) === port) return cb(new Error('refused address'));
+  if (guard) {
+    // resolved once, checked, and the connection pinned to that address (a name cannot flip to a private one in between)
+    return dns.lookup(u.hostname, (err, address, family) => {
+      if (err) return cb(new Error('no such host'));
+      if (guard(address)) return cb(new Error('refused address'));
+      const pin = (h, o, done) => (o && o.all) ? done(null, [{ address, family }]) : done(null, address, family);
+      request(url, u, headers, method, hop, cb, guard, { lookup: pin, agent: GUARDED[u.protocol] });
+    });
+  }
+  request(url, u, headers, method, hop, cb, null, { agent: AGENTS[u.protocol] });
+}
+function request(url, u, headers, method, hop, cb, guard, extra) {
   let done = false; const t0 = Date.now();
-  const req = (u.protocol === 'https:' ? https : http).request(u, { method, headers, timeout: 20000, agent: AGENTS[u.protocol] }, (up) => {
+  const req = (u.protocol === 'https:' ? https : http).request(u, Object.assign({ method, headers, timeout: 20000 }, extra), (up) => {
     const st = up.statusCode, loc = up.headers.location;
     if (LOG) console.error('[source]', method, st, u.host, headers.Range || '-', (Date.now() - t0) + ' ms');
     if ((st === 301 || st === 302 || st === 303 || st === 307 || st === 308) && loc && hop < 6) {
@@ -100,7 +115,7 @@ function open(url, headers, method, hop, cb) {
       let next; try { next = new URL(loc, u); } catch (e) { return cb(new Error('bad redirect')); }
       const h = Object.assign({}, headers);
       if (next.origin !== u.origin) { delete h.Authorization; delete h.authorization; delete h.Cookie; delete h.cookie; }
-      return open(next.href, h, st === 303 ? 'GET' : method, hop + 1, cb);
+      return open(next.href, h, st === 303 ? 'GET' : method, hop + 1, cb, guard);
     }
     done = true; cb(null, up, url);
   });
@@ -156,7 +171,7 @@ function fromCache(e, off, hit, h, res) {
       if (err || u2.statusCode !== 206 || closed) { if (u2) u2.destroy(); try { res.destroy(); } catch (x) {} return; }
       up = u2; const cut = () => { try { res.destroy(); } catch (x) {} };
       up.on('error', cut); up.on('aborted', cut); up.pipe(res);
-    });
+    }, e.guard);
   };
   if (res.write(hit.buf)) setTimeout(more, 50); else res.once('drain', more);
 }
@@ -198,14 +213,14 @@ function handle(req, res) {
     });
     up.once('end', () => { if (!seen) { res.writeHead(up.statusCode, hd); res.end(); } });
   };
-  if (child) return open(target, h, method, 0, reply);
+  if (child) return open(target, h, method, 0, reply, e.guard);
   const addr = fileAddress(e);
-  if (addr === e.src) return open(e.src, h, method, 0, reply);
+  if (addr === e.src) return open(e.src, h, method, 0, reply, e.guard);
   open(addr, h, method, 0, (err, up, at) => {
     // the remembered target stopped answering (a signed address that expired): once more from the add-on's address
-    if (err || up.statusCode >= 400) { if (up) up.resume(); e.final = ''; return open(e.src, h, method, 0, reply); }
+    if (err || up.statusCode >= 400) { if (up) up.resume(); e.final = ''; return open(e.src, h, method, 0, reply, e.guard); }
     reply(null, up, at);
-  });
+  }, e.guard);
 }
 
 module.exports = { urlFor, parseHeaders, cleanHeaders, _port: () => port };
