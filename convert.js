@@ -73,6 +73,7 @@ function audioArgs(q, o) {
 // as it is (`ac=copy`, a track that already is E-AC-3), never more than six channels (`ch` = the track's own count).
 async function segment(q, hd, req, res, o) {
   o = o || {};
+  if (o.tv) return segmentTv(q, hd, req, res, o);
   const src = q.get('src') || '';
   const t = Math.max(0, Number(q.get('t')) || 0), len = Math.min(30, Math.max(2, Number(q.get('len')) || 10));
   const a = Math.max(0, Number(q.get('a')) || 0), vmode = q.get('v') === 'h264' && !o.tv ? 'h264' : 'copy', vcodec = q.get('vc') || '', st = Math.max(0, Number(q.get('st')) || 0);
@@ -94,6 +95,41 @@ async function segment(q, hd, req, res, o) {
   req.on('close', kill);
   ff.on('error', (e) => { console.error('ffmpeg seg spawn', e && e.message || e); try { res.destroy(); } catch (e2) {} });   // never an uncaught exception
   ff.on('close', (code, sig) => { if ((code || sig) && !res.writableEnded) { try { res.destroy(); } catch (e) {} } if ((code || sig) && !killed) console.error('ffmpeg seg exit', code || sig, err.trim().slice(-300)); });   // a crash is a failed piece, never an empty one
+  return ff;
+}
+
+// The same piece for a television, as TWO streams in one answer. An LG (webOS 6) takes E-AC-3 only in a source buffer of
+// its own: "video/mp4; codecs=hvc1…, ec-3" is refused, a picture buffer + an "audio/mp4; codecs=ec-3" buffer play (measured
+// on his TV, 10-14 — HDR kept). So one FFmpeg reads the file ONCE and writes the picture (copied) to fd 3 and the sound to
+// fd 4, each fragmented MP4 on the file's own timeline (retime.js each); the answer interleaves them as frames — one byte
+// 'V' or 'A', four bytes of length (big-endian), the bytes — which the player feeds to its two buffers.
+const TAG_V = 0x56, TAG_A = 0x41;
+function frame(tag, d) { const h = Buffer.allocUnsafe(5); h[0] = tag; h.writeUInt32BE(d.length, 1); return Buffer.concat([h, d]); }
+async function segmentTv(q, hd, req, res, o) {
+  const src = q.get('src') || '';
+  const t = Math.max(0, Number(q.get('t')) || 0), len = Math.min(30, Math.max(2, Number(q.get('len')) || 10));
+  const a = Math.max(0, Number(q.get('a')) || 0), vcodec = q.get('vc') || '', st = Math.max(0, Number(q.get('st')) || 0);
+  const input = await source.urlFor(src, hd, agent(), o.guard); if (req.destroyed) return;
+  const MP4 = ['-f', 'mp4', '-movflags', 'frag_keyframe+delay_moov+default_base_moof', '-frag_duration', '1000000'];
+  const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', ...NET, '-copyts', '-ss', String(t), '-i', input,
+    '-map', '0:v:0', '-sn', '-dn', '-an', '-c:v', 'copy', ...(/hevc|h265/i.test(vcodec) ? ['-tag:v', 'hvc1'] : []), '-to', String(t + len), ...MP4, 'pipe:3',
+    '-map', '0:a:' + a, '-sn', '-dn', '-vn', ...audioArgs(q, o), '-to', String(t + len), ...MP4, 'pipe:4'];
+  const ff = spawn(FFMPEG, args, { stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'] });
+  let err = '', killed = false, open = 2;
+  ff.stderr.on('data', (d) => { err += d; if (err.length > 4000) err = err.slice(-4000); });
+  res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Cache-Control': 'no-store', 'X-Nebula-Split': '1' });
+  const outs = [ff.stdio[3].pipe(retime(st)), ff.stdio[4].pipe(retime(st))];
+  // both outputs pause together while the TV is behind (one paused alone would stall FFmpeg's other output and deadlock)
+  const resume = () => outs.forEach((x) => x.resume());
+  outs.forEach((s, i) => {
+    s.on('data', (d) => { if (!res.write(frame(i ? TAG_A : TAG_V, d))) { outs.forEach((x) => x.pause()); res.once('drain', resume); } });
+    s.on('end', () => { if (--open === 0 && !res.writableEnded) res.end(); });
+    s.on('error', () => { try { res.destroy(); } catch (e) {} });
+  });
+  const kill = () => { killed = true; try { ff.kill('SIGKILL'); } catch (e) {} };
+  req.on('close', kill);
+  ff.on('error', (e) => { console.error('ffmpeg tv seg spawn', e && e.message || e); try { res.destroy(); } catch (e2) {} });
+  ff.on('close', (code, sig) => { if ((code || sig) && !res.writableEnded) { try { res.destroy(); } catch (e) {} } if ((code || sig) && !killed) console.error('ffmpeg tv seg exit', code || sig, err.trim().slice(-300)); });
   return ff;
 }
 

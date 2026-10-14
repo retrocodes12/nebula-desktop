@@ -3,10 +3,11 @@
 // plays, no audio track is listed, measured 2026-10-12) has this computer convert it. The TV's player asks, on the same
 // token-gated listener as Share with your TV (relay.js):
 //   GET /relay/probe?src=<file>&h=<headers>&k=<token>        what the file holds (convert.js probe)
-//   GET /relay/seg?src=…&t=&len=&a=&ch=&ac=&vc=&st=&k=…        one piece as fragmented MP4: the picture copied as it is
-//                                                             (HEVC 10-bit and its HDR included), the audio → E-AC-3
+//   GET /relay/seg?src=…&t=&len=&a=&ch=&ac=&vc=&st=&k=…        one piece as TWO fragmented MP4 streams in framed form
+//                                                             (convert.js segmentTv): the picture copied as it is (HEVC
+//                                                             10-bit and its HDR included), the audio → E-AC-3
 // and appends the pieces itself, so the TV keeps a real timeline: seeking, the length and subtitles work as for any file.
-// healthz says what this computer offers ({ sound: { codec: 'ec-3' } }) so a TV only routes a film here when it can.
+// healthz says what this computer offers ({ sound: { codec: 'ec-3', split: true } }) so a TV only routes a film here when it can.
 //
 // Safety, on top of the listener's token: http(s) files only, and only from the internet — the host and every redirect
 // are resolved, checked and pinned (source.js guard, relay.js privateTarget), so whoever holds the token cannot reach this
@@ -75,7 +76,7 @@ function attach(r, isReady) {
   relay = r; ready = isReady || ready;
   relay.route('/relay/probe', (req, res, u) => { probe(req, res, u).catch(() => { try { if (!res.headersSent) res.writeHead(500); res.end(); } catch (e) {} }); });
   relay.route('/relay/seg', (req, res, u) => { seg(req, res, u).catch(() => { try { if (!res.headersSent) res.writeHead(500); res.end(); } catch (e) {} }); });
-  relay.health(() => ready().then((ok) => (ok ? { sound: { codec: TAG, v: 1 } } : {}), () => ({})));
+  relay.health(() => ready().then((ok) => (ok ? { sound: { codec: TAG, v: 2, split: true } } : {}), () => ({})));
   relay.onStop(stopAll);
 }
 module.exports = { attach, stopAll, running: () => kids.size, CODEC, TAG };
