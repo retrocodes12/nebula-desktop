@@ -279,7 +279,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          Share with your TV now also brings the sound an LG TV cannot play: when a film's only sound is DTS, the TV plays it through this computer, which turns the sound into Dolby Digital Plus and passes the picture through untouched — 4K and HDR included. Both devices signed in to the same profile, sharing on. The computer only fetches films from the internet, never from other devices on your network, and stops converting the moment sharing is turned off. Also: a stream that will not play says why and offers the next source. Same player as web 2026.10.14.1.
+          Picture size: a Picture button in the player (or the V key) chooses Fit, Fill — covers the window and trims the edges — or Stretch, for every kind of file, and remembers it on this computer. Same player as web 2026.10.14.2.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \

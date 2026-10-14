@@ -29,7 +29,9 @@ const YESNO = /^(yes|no)$/, NUM = /^-?\d{1,7}(\.\d{1,6})?$/, TRACK = /^(\d{1,3}|
 const SETTABLE = { pause: YESNO, mute: YESNO, 'sub-bold': YESNO, volume: NUM, speed: NUM, 'sub-delay': NUM, 'sub-speed': NUM, 'sub-scale': NUM, 'sub-pos': NUM,
   'sub-border-size': NUM, 'sub-shadow-offset': NUM, aid: TRACK, sid: TRACK, 'sub-color': COLOR, 'sub-back-color': COLOR, 'sub-border-color': COLOR,
   'sub-shadow-color': COLOR, 'sub-font': /^(sans-serif|serif|monospace)$/, 'sub-border-style': /^(outline-and-shadow|opaque-box|background-box)$/,
-  'cache-secs': /^\d{1,7}$/, 'demuxer-max-bytes': /^([1-9]\d{1,2}|10[0-2]\d)MiB$/ };
+  'cache-secs': /^\d{1,7}$/, 'demuxer-max-bytes': /^([1-9]\d{1,2}|10[0-2]\d)MiB$/,
+  // the player's Picture size: Fill = panscan 1 (covers the window, trims the edges), Stretch = keepaspect no
+  panscan: /^(0|1|0?\.\d{1,3})$/, keepaspect: YESNO };
 const SEEK_MODE = /^(absolute|relative)(\+exact|\+keyframes)?$/;
 
 let s = null;                                           // the helper session now running (see start)
