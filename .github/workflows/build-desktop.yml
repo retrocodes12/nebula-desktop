@@ -279,7 +279,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          Picture size: a Picture button in the player (or the V key) chooses Fit, Fill — covers the window and trims the edges — or Stretch, for every kind of file, and remembers it on this computer. Same player as web 2026.10.14.2.
+          Who's watching: an account can hold two profiles, each with its own Continue Watching, resume points and My List; add-ons and settings stay shared. Add one in Settings › Profile; with two, Nebula asks who's watching when it opens. Same player as web 2026.10.15.2.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
