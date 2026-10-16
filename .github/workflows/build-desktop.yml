@@ -279,7 +279,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          Who's watching has a new look: big round profiles with their names, and Manage Profiles to edit a profile's name and colour, add a second profile or remove it. Settings › Profile opens the same picker. Same player as web 2026.10.16.1.
+          Each who's-watching profile now keeps its own add-ons (the second starts from a copy of the first's). Shows from add-ons that call them "other" list their episodes, and the pickers' arrow is drawn as an icon. Same player as web 2026.10.16.2.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
