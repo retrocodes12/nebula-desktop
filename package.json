@@ -1,6 +1,6 @@
 {
   "name": "clearkey-player",
-  "version": "1.100.1",
+  "version": "1.101.0",
   "description": "Nebula — add an add-on, browse it, press play. Every format, on-device.",
   "main": "main.js",
   "author": "Nebula",

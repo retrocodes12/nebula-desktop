@@ -14,12 +14,12 @@ const MAX_W = 1920, MAX_H = 1080, WIN = process.platform === 'win32';
 const OBSERVE = ['time-pos', 'duration', 'pause', 'paused-for-cache', 'seeking', 'eof-reached', 'idle-active', 'volume', 'mute', 'speed',
   'demuxer-cache-duration', 'dwidth', 'dheight', 'frame-drop-count', 'estimated-vf-fps', 'container-fps', 'video-bitrate', 'audio-bitrate',
   'aid', 'sid', 'audio-codec-name', 'video-codec', 'audio-params/channel-count', 'demuxer-via-network', 'track-list', 'sub-text', 'mpv-version',
-  'hwdec-current', 'video-params/gamma', 'video-params/primaries', 'seekable', 'file-size', 'demuxer-cache-idle', 'demuxer-cache-time'];
+  'hwdec-current', 'video-params/gamma', 'video-params/primaries', 'seekable', 'file-size', 'demuxer-cache-idle', 'demuxer-cache-time', 'audio-delay'];
 // a read the host never answers ends at mpv's network-timeout (10 s, the options below): this long without anything new
 // while mpv's reader waits on the network is a stall about to end so — and anything that ends sooner was a close
 const STALL_MS = 9000;
 const GETTABLE = ['aid', 'sid', 'speed', 'volume', 'mute', 'pause', 'sub-text', 'idle-active', 'frame-drop-count', 'container-fps', 'estimated-vf-fps',
-  'audio-codec-name', 'video-codec', 'hwdec-current', 'mpv-version', 'demuxer-cache-duration', 'video-params/gamma'];
+  'audio-codec-name', 'video-codec', 'hwdec-current', 'mpv-version', 'demuxer-cache-duration', 'video-params/gamma', 'audio-delay'];
 const LIB_DIRS = ['/lib/x86_64-linux-gnu', '/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/usr/lib', '/lib64', '/usr/local/lib', '/usr/lib/aarch64-linux-gnu'];
 // the helper's exits that say this computer cannot run it at all (helper/nebula-mpv.c): no libmpv loads (4), mpv will not be
 // made (6) or start (7), or it is too old to draw in software (8). Anything else — a slow start, a crash — was one play's.
@@ -31,7 +31,9 @@ const SETTABLE = { pause: YESNO, mute: YESNO, 'sub-bold': YESNO, volume: NUM, sp
   'sub-shadow-color': COLOR, 'sub-font': /^(sans-serif|serif|monospace)$/, 'sub-border-style': /^(outline-and-shadow|opaque-box|background-box)$/,
   'cache-secs': /^\d{1,7}$/, 'demuxer-max-bytes': /^([1-9]\d{1,2}|10[0-2]\d)MiB$/,
   // the player's Picture size: Fill = panscan 1 (covers the window, trims the edges), Stretch = keepaspect no
-  panscan: /^(0|1|0?\.\d{1,3})$/, keepaspect: YESNO };
+  panscan: /^(0|1|0?\.\d{1,3})$/, keepaspect: YESNO,
+  // the player's Audio delay (seconds, the viewer's own + what the add-on says of a dub)
+  'audio-delay': NUM };
 const SEEK_MODE = /^(absolute|relative)(\+exact|\+keyframes)?$/;
 
 let s = null;                                           // the helper session now running (see start)
