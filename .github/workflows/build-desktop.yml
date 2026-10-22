@@ -37,13 +37,16 @@ jobs:
       - name: Fetch the Electron binary
         run: node node_modules/electron/install.js
 
-      # libmpv for the full-format player (mpv.js): the baseline x86-64 build (the -v3 ones need AVX2), pinned by its hash
+      # libmpv for the full-format player (mpv.js): the baseline x86-64 build (the -v3 ones need AVX2), pinned by its hash.
+      # shinchiro/mpv-winbuild-cmake 20260903 (mpv-dev-x86_64-20260903-git-69e63f425a.7z, sha256 fac135c6…faef) was removed
+      # upstream (404, 10-22); the same libmpv-2.dll, taken out of v1.101.0's installer (identical to v1.100.1's), is kept
+      # on this repo's pre-release deps-libmpv-20260903
       - name: Fetch libmpv (Windows)
         shell: bash
         run: |
-          curl -fsSL -o mpv-dev.7z "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20260903/mpv-dev-x86_64-20260903-git-69e63f425a.7z"
-          echo "fac135c68a35b7639e39d72c0c365104edbaebdea39a0dfdd8c36e8c8e80faef  mpv-dev.7z" | sha256sum -c -
-          mkdir -p build/mpv/win && 7z e mpv-dev.7z -obuild/mpv/win libmpv-2.dll -y > /dev/null
+          mkdir -p build/mpv/win
+          curl -fsSL -o build/mpv/win/libmpv-2.dll "https://github.com/retrocodes12/nebula-desktop/releases/download/deps-libmpv-20260903/libmpv-2.dll"
+          echo "673e6397920ab64a9c5b3a618f7f16d38854efe72b58665f1f84e4e873b763a4  build/mpv/win/libmpv-2.dll" | sha256sum -c -
           ls -la build/mpv/win
 
       # ANGLE (OpenGL ES on Direct3D 11) for the picture on the graphics chip (helper/gpu_win.c). Electron carries its own
