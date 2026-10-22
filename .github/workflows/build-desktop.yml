@@ -279,7 +279,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          An audio delay in the Audio menu (files played by the full-format player), kept on this computer. A stream that stops mid-way is asked for again and plays on from the same second, and errors say what went wrong. The next episode keeps the same release by its file name. Jumps made with the controls hidden show how far on their side over a slim bar, and subtitles can be dimmer over HDR video. Same player as web 2026.10.17.1.
+          The app moves with you now: a page you open slides in from the side and Back sends it away, tabs fade through, cards and buttons give when pressed, posters fade in as they load, a row's posters rise in one after another, and a title page's picture settles as it lands. Motion: Reduced keeps the cuts. Same player as web 2026.10.22.1.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
