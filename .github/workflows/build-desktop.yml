@@ -282,7 +282,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          A who's-watching profile can have a PIN: Manage Profiles, open a profile, Add a PIN. Picking a profile with a PIN asks for its four digits (the keyboard's number keys work), at launch too. Forgot PIN? removes it with your account's password. Same player as web 2026.10.23.1.
+          Profiles keep to themselves across devices: a second profile no longer picks up the first profile's add-ons when the connection drops, signing into another account no longer brings your second profile (its name, PIN, history and add-ons) along, and signing in asks who's watching. Same player as web 2026.10.26.1.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
