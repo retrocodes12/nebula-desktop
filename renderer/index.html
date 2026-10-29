@@ -636,7 +636,7 @@
   .s-spec b { display:block; color:var(--label); font-size:calc(14px * var(--ts)); font-weight:600; letter-spacing:-.01em; }
   .s-spec .s-nwr, .s-spec .s-slow { display:block; font-style:normal; color:var(--label3); font-size:calc(11px * var(--ts)); letter-spacing:.04em; margin-top:2px; }
   .stream.nwr .s-plate, .stream.nwr .stream-name { opacity:.7; }
-  .s-spec .s-nosnd, .s-spec .s-snd { display:block; font-style:normal; color:var(--label3); font-size:calc(11px * var(--ts)); letter-spacing:.04em; margin-top:2px; }
+  .s-spec .s-nosnd, .s-spec .s-snd, .s-spec .s-inst { display:block; font-style:normal; color:var(--label3); font-size:calc(11px * var(--ts)); letter-spacing:.04em; margin-top:2px; }
   .stream.nosnd .s-plate, .stream.nosnd .stream-name { opacity:.7; }
   .stream.slow .s-plate, .stream.slow .stream-name { opacity:.8; }
   html.tv .s-plate { width:84px; padding:14px 0; }
@@ -2156,6 +2156,10 @@
   .setrow.tvonly { display:none; }
   html.tv .setrow.tvonly { display:flex; }
   html.tv #setConsole.ess .setrow.tvonly[data-lvl="all"] { display:none; }
+  /* Essential on a TV keeps Streams for Autoplay the best stream alone — the list's own rows stay Everything */
+  html.tv #setConsole.ess .con-item[data-sec="streams"] { display:flex; }
+  html.tv #setConsole.ess .con-sec.on[data-sec="streams"] { display:block; }
+  html.tv #setConsole.ess .con-sec[data-sec="streams"] .setrow:not(.tvonly) { display:none; }
   /* a stepper: ‹ value › for long lists (languages, the row that feeds the carousel) */
   .pstep { display:inline-flex; align-items:center; padding:3px; border-radius:var(--r-pill); border:1px solid var(--sep); }
   .pstep .chip, .setrow .pstep .chip { margin:0; border-color:transparent; padding:6px 13px; min-width:38px; text-align:center; }
@@ -2185,6 +2189,42 @@
   .addon.off .addon-tog { color:var(--label3); }
   html.tv .addon-tog.focusable:focus { background:var(--label); color:#000; border-color:var(--label); }
   .addon-tog.focusable:focus-visible { background:var(--label); color:#000; border-color:var(--label); }
+  /* ---- a title another app asked to play (10-26): its picture, its name, and who is still being asked, until it plays ---- */
+  #launchCard { position:fixed; left:0; top:0; right:0; bottom:0; z-index:50; background:#000; opacity:0; visibility:hidden;
+    transition:opacity .45s var(--ease), visibility 0s .45s; overflow:hidden; }
+  #launchCard.on { opacity:1; visibility:visible; transition:opacity .3s var(--ease); }
+  .lc-back { position:absolute; left:0; top:0; right:0; bottom:0; background:#000 center 25%/cover no-repeat; opacity:0; transition:opacity .9s ease; }
+  .lc-back.in { opacity:1; }
+  #launchCard.on .lc-back.in { animation:lcdrift 30s linear both; }
+  @keyframes lcdrift { from { transform:scale(1.02); } to { transform:scale(1.1); } }
+  .lc-shade { position:absolute; left:0; top:0; right:0; bottom:0;
+    background:linear-gradient(to top, rgba(0,0,0,.94) 0%, rgba(0,0,0,.72) 32%, rgba(0,0,0,.18) 62%, rgba(0,0,0,.35) 100%),
+               linear-gradient(to right, rgba(0,0,0,.6) 0%, rgba(0,0,0,0) 60%); }
+  .lc-body { position:absolute; left:7vh; right:7vh; bottom:9vh; }
+  .lc-logo { display:block; max-width:44vh; max-height:15vh; margin-bottom:3.2vh; }
+  .lc-title { font-size:7.4vh; font-weight:700; letter-spacing:-.02em; line-height:1.02; margin-bottom:3vh; color:#fff; max-width:120vh; }
+  .lc-line { display:flex; align-items:center; font-size:3.1vh; font-weight:500; color:#fff; min-height:4vh; }
+  .lc-ring { flex:0 0 auto; width:3.4vh; height:3.4vh; margin-right:1.8vh; border-radius:50%; border:.42vh solid rgba(255,255,255,.18);
+    border-top-color:#fff; animation:puispin .8s linear infinite; }
+  #launchCard.picked .lc-ring { border-color:var(--accent); border-top-color:#fff; }
+  .lc-bar { position:relative; height:.42vh; max-width:62vh; margin:2.6vh 0 2.4vh; border-radius:1vh; background:rgba(255,255,255,.14); overflow:hidden; }
+  .lc-bar i { position:absolute; left:0; top:0; bottom:0; width:34%; border-radius:1vh; background:linear-gradient(90deg, rgba(255,255,255,0), #fff, rgba(255,255,255,0));
+    animation:lcsweep 1.5s cubic-bezier(.45,.05,.55,.95) infinite; }
+  #launchCard.picked .lc-bar i { width:100%; background:var(--accent); animation:none; transition:width .4s; }
+  @keyframes lcsweep { from { transform:translateX(-110%); } to { transform:translateX(300%); } }
+  .lc-who { display:flex; flex-wrap:wrap; }
+  .lc-who span { display:inline-flex; align-items:center; margin:0 1.2vh 1.2vh 0; padding:.7vh 1.6vh; border-radius:3vh; font-size:2.1vh; font-weight:500;
+    color:rgba(255,255,255,.7); background:rgba(255,255,255,.1); transition:background .3s, color .3s; }
+  .lc-who span.done { color:#fff; background:rgba(255,255,255,.2); }
+  .lc-who span.none { color:rgba(255,255,255,.4); }
+  .lc-who span em { font-style:normal; margin-left:1vh; font-family:var(--mono); font-size:1.8vh; opacity:.85; }
+  .lc-who span .s-dot { width:.9vh; height:.9vh; border-radius:50%; margin-right:1vh; background:rgba(255,255,255,.5); animation:lcpulse 1.2s ease-in-out infinite; }
+  .lc-who span.done .s-dot, .lc-who span.none .s-dot { animation:none; background:#fff; }
+  .lc-who span.none .s-dot { background:rgba(255,255,255,.35); }
+  @keyframes lcpulse { 50% { opacity:.25; transform:scale(.7); } }
+  .lc-hint { margin-top:1.6vh; font-size:1.9vh; color:rgba(255,255,255,.5); }
+  html.lite #launchCard.on .lc-back.in { animation:none; }
+  @media (prefers-reduced-motion: reduce){ #launchCard.on .lc-back.in { animation:none; } }
   /* ---- lite (real TVs): identical layout, cheap rendering ---- */
   html.lite * { -webkit-backdrop-filter:none !important; backdrop-filter:none !important; }
   html.lite #rail { transition:none; box-shadow:none; }
@@ -2340,6 +2380,7 @@
           <button id="puiQual" class="focusable pui-btn" style="display:none" title="Quality (q)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M4 7h8.5M16.5 7H20M4 12h2.5M10.5 12H20M4 17h10.5M18.5 17H20"/><circle cx="14.5" cy="7" r="2"/><circle cx="8.5" cy="12" r="2"/><circle cx="16.5" cy="17" r="2"/></svg><span class="pl">Quality</span><span class="pv" id="puiQualVal"></span></button>
           <button id="puiSpeed" class="focusable pui-btn" title="Speed (&lt; and &gt;)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.2 18.2a9 9 0 1 1 13.6 0"/><path d="M12 13.5l4.2-4.7"/><circle cx="12" cy="13.5" r="1.4" fill="currentColor" stroke="none"/></svg><span class="pl">Speed</span><span class="pv" id="puiSpeedVal">1×</span></button>
           <button id="puiFit" class="focusable pui-btn" title="Picture size (v)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M6.5 12h4M6.5 12l1.8-1.8M6.5 12l1.8 1.8M17.5 12h-4M17.5 12l-1.8-1.8M17.5 12l-1.8 1.8"/></svg><span class="pl">Picture</span><span class="pv" id="puiFitVal">Fit</span></button>
+          <button id="puiStreams" class="focusable pui-btn" title="Another stream for this title" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h11M4 12h11M4 18h7"/><path d="M17 15l3 3-3 3M20 18h-5"/></svg><span class="pl">Streams</span><span class="pv" id="puiStreamsVal"></span></button>
           <button id="puiSleep" class="focusable pui-btn" title="Sleep timer (z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.5 14.2A8 8 0 0 1 9.8 4.5a8 8 0 1 0 9.7 9.7z"/></svg><span class="pl">Sleep</span><span class="pv" id="puiSleepVal"></span></button>
           <button id="puiParty" class="focusable pui-btn" title="Watch party — watch together in sync"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.2 19a5.8 5.8 0 0 1 11.6 0"/><path d="M15.5 5.3a3.2 3.2 0 0 1 0 5.4M16.8 13.6a5.8 5.8 0 0 1 4 5.4"/></svg><span class="pl">Party</span></button>
         </div></div>
@@ -2747,6 +2788,35 @@
           <span class="setname">Add-on on each row<small>Its initial in a ring, its name, or nothing</small></span>
           <span id="setAddonMark" class="seg"></span>
         </div>
+        <!-- autoplay the best stream (TVs): Play on a film or episode starts its best stream; the rows under it show only when it is on -->
+        <div class="setrow tvonly" id="rowBestPlay">
+          <span class="setname">Autoplay the best stream<small>Play on a film or episode starts its best stream — no list</small></span>
+          <span id="setBestPlay" class="seg"></span>
+        </div>
+        <div class="setrow tvonly ap-sub">
+          <span class="setname">Aim for<small>The best quality it reaches for · Higher rows rank just below it</small></span>
+          <span id="setApMax" class="seg"></span>
+        </div>
+        <div class="setrow tvonly ap-sub">
+          <span class="setname">Instant debrid first<small>Debrid rows that are ready play before higher quality</small></span>
+          <span id="setApInstant" class="seg"></span>
+        </div>
+        <div class="setrow tvonly ap-sub">
+          <span class="setname">Wait for add-ons<small>Quick: the first good row · Balanced: up to 25 s · All: every add-on</small></span>
+          <span id="setApWait" class="seg"></span>
+        </div>
+        <div class="setrow tvonly ap-sub">
+          <span class="setname">If it won't start<small>Plays the next best stream instead</small></span>
+          <span id="setApRetry" class="seg"></span>
+        </div>
+        <div class="setrow tvonly ap-sub">
+          <span class="setname">Give a start<small>A stream with no picture by then counts as not starting</small></span>
+          <span id="setApStart" class="seg"></span>
+        </div>
+        <div class="setrow tvonly ap-sub">
+          <span class="setname">Back from the player<small>Where Back goes after a stream it picked</small></span>
+          <span id="setApBack" class="seg"></span>
+        </div>
         <div class="setrow">
           <span class="setname">Play the best stream by itself<small>Skips the list</small></span>
           <span id="setAutoPick" class="seg"></span>
@@ -2938,6 +3008,17 @@
     </div>
   </div>
 
+  <div id="launchCard" role="status" aria-live="polite">
+    <div class="lc-back" id="lcBack"></div><div class="lc-shade"></div>
+    <div class="lc-body">
+      <img class="lc-logo" id="lcLogo" alt="" style="display:none">
+      <div class="lc-title" id="lcTitle"></div>
+      <div class="lc-line"><span class="lc-ring"></span><span id="lcText">Finding the best stream…</span></div>
+      <div class="lc-bar"><i></i></div>
+      <div class="lc-who" id="lcWho"></div>
+      <div class="lc-hint">Press any button to choose a stream yourself</div>
+    </div>
+  </div>
   <div id="status" class="info">Ready.</div>
 
 <script>
@@ -2946,7 +3027,7 @@
   var statusEl = document.getElementById('status');
   var LS = window.localStorage;
   var player = null, viewStack = ['home'], ctx = {};
-  var PLAYER_VERSION = '2026.10.26.1';
+  var PLAYER_VERSION = '2026.10.29.1';
 
   // Where our own site files (pair.html, party.json, player-version.json) live.
   // Served over http(s) the player is self-contained — any mirror works from its
@@ -3014,6 +3095,7 @@
   var statusTimer = null;
   var statusAt = 0;
   function setStatus(m, k, ms){
+    if (k === 'error') lcHide();                   // a launch's card never covers what went wrong
     statusAt = Date.now();
     statusEl.textContent = m; statusEl.className = (k||'info') + ' show';
     clearTimeout(statusTimer);
@@ -3467,6 +3549,12 @@
     if (viewStack.length > 1){
       var popped = viewStack.pop();
       var top = viewStack[viewStack.length-1];
+      // a best pick (shelf mode, a launch) never showed its list: Back from the player goes where Play was pressed
+      // (Settings › Back from the player: Streams list keeps it)
+      if (popped === 'player' && top === 'streams' && was && ctx.bestFor && lastStreamsReq && ctx.bestFor === lastStreamsReq.id && viewStack.length > 1 && apPrefs().back === 'title'){
+        viewStack.pop(); top = viewStack[viewStack.length-1];
+        show(top, false); return;
+      }
       // a title page opened from another's Universe row: Back redraws the one it was opened from
       if (popped === 'detail' && top === 'detail' && detTrail.length){
         var prev = detTrail.pop();
@@ -3666,7 +3754,9 @@
         else if (puiState.menu){ closePuiMenu(true); }
         // while a stream is still starting there is nothing to peel: Back means "not this one" — nor once it would not play
         // (a black screen with the controls up: the first Back only hid them, and read as Back doing nothing, 10-15)
-        else if (pui.className !== 'idle' && !playStarting && !(stall.failSeq === playSeq && video.readyState < 2)){ puiIdle(); }
+        // with the pause board up Back leaves: peeling the chrome only re-armed the board 1.6 s later, so Back slower than
+        // that never left a paused film (10-27, his TV: six presses)
+        else if (!pui.classList.contains('idle') && !pui.classList.contains('pb-on') && !playStarting && !(stall.failSeq === playSeq && video.readyState < 2)){ puiIdle(); }
         else { goBack(); }
         e.preventDefault(); return;
       }
@@ -4670,6 +4760,8 @@
   var curPlay = null;
   function noteProgress(pos, dur, done){
     var c = curPlay; if (!c || !c.id) return;
+    if (briefClip()) return;                    // a debrid add-on's 8-second message is not the film
+
     var k = progKey(c.type, c.id), p = getProgress();
     if (done || (dur > 0 && pos > dur - PROG_END_GAP)){
       p[k] = { type: c.type, id: c.id, done: true, at: Date.now() };
@@ -4917,6 +5009,16 @@
       }
       return r;
     } finally { pxDone(); }
+  }
+  /** A stream list, asked once more 2 s after a failure that may pass (no answer, a 5xx, 408, 429, a broken body) —
+      an add-on dropping one request in a while cost the viewer that add-on's rows ("Could not reach your add-ons").
+      A 404 or another 4xx is the add-on's answer and stands. */
+  function streamJson(u){
+    return getJson(u).catch(function(e){
+      var m = /^HTTP (\d+)/.exec((e && e.message) || ''), c = m ? +m[1] : 0;
+      if (c && c < 500 && c !== 408 && c !== 429) throw e;
+      return new Promise(function(ok){ setTimeout(ok, 2000); }).then(function(){ return getJson(u); });
+    });
   }
   function canProxy(u){ return /^https?:\/\//i.test(u||'') && String(u).indexOf(CLOUD_BASE) !== 0; }
   async function getJson(url){
@@ -7244,6 +7346,8 @@
     return { size: size, bitrate: bitrate, seeds: seeds, langs: langs, provider: provider,
              desc: desc.join(' · ') };
   }
+  // a debrid service's tag in a row's name: "[TB⚡]", "[TB⬇️]", "[TB+]", "[RD download]", "[TB🔄]" (streamCard says it in words)
+  var RE_DEB_TAG = /\[[A-Za-z]{2,3} ?(?:\u26A1|\+|\u2B07|\u23F3|download|\uD83D\uDD04)[^\]]*\]/gi;
   var RE_EMOJI = /[\u2190-\u21FF\u2300-\u27BF\u2B00-\u2BFF\uFE0F\u200D]|[\uD83C-\uDBFF][\uDC00-\uDFFF]/g;
   var RE_RES = /\b(4k|2160p|uhd|1080p|fhd|720p|480p|360p)\b/ig;
   function plateFor(raw){
@@ -7257,7 +7361,7 @@
       name only has to say which RELEASE this is — strip everything the row
       already shows elsewhere. */
   function cleanStreamName(raw, addonName){
-    var t = String(raw || '').replace(/\n/g, ' ').replace(RE_EMOJI, ' ');
+    var t = String(raw || '').replace(/\n/g, ' ').replace(RE_DEB_TAG, ' ').replace(RE_EMOJI, ' ');
     if (addonName) t = t.replace(new RegExp('\\b' + addonName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'ig'), ' ');
     t = t.replace(RE_RES, ' ')
          .replace(/\s*[·•|]\s*/g, ' · ')
@@ -7309,6 +7413,9 @@
     // faster than this device has measured its connection to be (Settings › Streams): no buffer saves such a row
     if (streamSlow(s, f)){ spec += '<i class="s-slow">may stall here</i>'; card.className += ' slow'; }
     if (s.behaviorHints && s.behaviorHints.notWebReady){ spec += '<i class="s-nwr">may not play here</i>'; card.className += ' nwr'; }
+    // a debrid row: ready in the service's cloud (starts at once) or not yet (it would have to fetch the file first)
+    if (streamInstant(s)) spec += '<i class="s-inst">instant</i>';
+    else if (debridState(s) === 'wait') spec += '<i class="s-inst">not ready yet</i>';
     // an LG plays a DTS film's picture in silence: said before it is picked — or, with a computer converting sound for this TV, who will
     if (streamNoSound(s)){
       var hp = soundHelper();
@@ -8340,8 +8447,11 @@
         { icon:'restart', label:'Start over', fn: function(){ ctx.startOver = true; ctx.resumeChosen = true; go(); } }
       ] });
   }
-  function openStreams(type, id, titleText, fresh, noAuto){
+  function openStreams(type, id, titleText, fresh, noAuto, pick){
+    // Autoplay the best stream (Settings › Streams, TVs; on by itself under Shelf): a film or an episode starts on its best stream, no list
+    if (!pick && !noAuto && shelfMode() && (type === 'movie' || type === 'series')) pick = 'best';
     var seq = ++openSeq, openedAt = Date.now(), pr = getPrefs();
+    if (pick === 'best'){ ctx.bestFor = id; ctx.bestQueue = null; ctx.bestTries = 0; } else ctx.bestFor = '';
     // the title this list plays under is the one it was opened for — a film resumed from Continue watching wore the
     // previous play's title on the player and in the party
     if (titleText) ctx.streamTitle = titleText;
@@ -8369,20 +8479,37 @@
     // the player choosing for you (Settings › Streams): the twin of the last pick, or the first row, once every
     // add-on has answered or the wait runs out — never once the remote or the pointer has moved on the list
     // (never on the way BACK to a list: Back is the viewer choosing, and the pick would replay what they just left)
-    var apMode = (!noAuto && (pr.autoPick === 'same' || pr.autoPick === 'first')) ? pr.autoPick : '', apTimer = null, apDone = false;
-    function autoPickNow(){
+    var apMode = pick === 'best' ? 'best' : (!noAuto && (pr.autoPick === 'same' || pr.autoPick === 'first')) ? pr.autoPick : '', apTimer = null, apDone = false;
+    function autoPickNow(final){
       if (apDone || seq !== openSeq) return;
+      // a launch's pick with nothing on the list yet keeps waiting for the add-ons still asked (to 90 s), card up
+      if (apMode === 'best' && !final && !list.querySelector('.stream:not(.skel)')) return;
       apDone = true; clearTimeout(apTimer);
-      if (lastKeyAt > openedAt || lastPointerAt > openedAt) return;
-      var sv = document.querySelector('.view.active'); if (!sv || sv.id !== 'view-streams') return;
+      // (a pick another app asked for minds only the keys: an LG remote's pointer wakes when the remote is merely picked up)
+      if (lastKeyAt > openedAt || (apMode !== 'best' && lastPointerAt > openedAt)){ lcHide(); return; }
+      var sv = document.querySelector('.view.active'); if (!sv || sv.id !== 'view-streams'){ lcHide(); return; }
       var row = apMode === 'same' ? list.querySelector('.stream.usual') : null;
+      if (apMode === 'best'){
+        var ranked = bestStreamRows(list);
+        ctx.bestQueue = ranked.map(function(r){ return { s: r.__s, a: r.__a }; });
+        row = ranked[0] || null;
+      }
       // never a row this connection cannot carry, nor one the add-on says will not play here, while another is there
-      if (!row) row = list.querySelector('.stream:not(.skel):not(.slow):not(.nwr):not(.nosnd)') || list.querySelector('.stream:not(.skel):not(.nosnd)') || list.querySelector('.stream:not(.skel)');
-      if (!row) return;
-      setStatus('Playing the best stream for you.', 'info');
+      // (a launch's pick with only not-ready debrid rows leaves the list to the viewer)
+      if (!row && apMode !== 'best') row = list.querySelector('.stream:not(.skel):not(.slow):not(.nwr):not(.nosnd)') || list.querySelector('.stream:not(.skel):not(.nosnd)') || list.querySelector('.stream:not(.skel)');
+      if (!row){ lcHide(); return; }
+      if (apMode === 'best') lcPick(row); else setStatus('Playing the best stream for you.', 'info');
       row.click();
     }
-    if (apMode) apTimer = setTimeout(autoPickNow, pickWaitSecs() * 1000);
+    // 'best' waits for every add-on (its pick is the best of all of them), but not for ever
+    // (Settings › Wait for add-ons: Quick picks at 8 s, Balanced at 25 s, All once everyone has answered — 90 s at most)
+    var apw = apMode === 'best' ? apPrefs().wait : '';
+    if (apMode && apw !== 'all') apTimer = setTimeout(autoPickNow, apMode === 'best' ? (apw === 'quick' ? 8000 : 25000) : pickWaitSecs() * 1000);
+    if (apMode === 'best') setTimeout(function(){ autoPickNow(true); }, 90000);
+    if (apMode === 'best'){
+      var lim = ctx.item && (ctx.item.id === id || ctx.item.id === seriesIdOf(id)) ? ctx.item : null;
+      lcShow({ id: seriesIdOf(id), name: titleText || (lim && lim.name) || '', background: lim && lim.background });
+    }
     if (!order.length){
       list.innerHTML = '';
       list.appendChild(esBlock('addons', 'No add-ons yet', 'Add an add-on and its streams show up here.',
@@ -8409,6 +8536,21 @@
       waitEl.className = 's-waitline on';
     }
     function waitDone(name){ var i = waiting.indexOf(name); if (i >= 0) waiting.splice(i, 1); waitRender(); }
+    // a launch's pick stops waiting for slower add-ons once its best row so far is ready in TorBox (Comet's "[TB⚡]") with
+    // sound, and is the quality it aims for (4K) — or is the best the debrid add-ons will give (none of them is still being
+    // asked). Quick takes the first row with sound that is ready or at that quality; All waits for every add-on.
+    function bestEarly(){
+      if (apMode !== 'best' || apDone || seq !== openSeq || apw === 'all') return;
+      var top = bestStreamRows(list)[0], s = top && top.__s, ap = apPrefs();
+      if (!s || (streamNoSound(s) && !soundHelper())) return;
+      var at = streamRank(s) >= ap.max;
+      if (apw === 'quick'){ if (!at && !streamInstant(s)) return; }
+      else {
+        if (!streamInstant(s)) return;
+        if (!at && waiting.some(debridAddonName)) return;
+      }
+      setTimeout(function(){ autoPickNow(true); }, 300);
+    }
     function removeLoading(){
       var el = document.getElementById('streamsLoading');
       if (el && el.parentNode) el.parentNode.removeChild(el);
@@ -8419,6 +8561,7 @@
       if (pending) return;
       removeLoading();
       if (!total){
+        lcHide();                                  // nothing to pick: the page says why
         var req = lastStreamsReq, live = /^(tv|channel|events?)$/.test(type);
         var retry = function(){ if (req) openStreams(req.type, req.id, req.title, ctx.startOver); };
         list.innerHTML = '';
@@ -8444,7 +8587,7 @@
         var cnt = $id('shCount');
         if ($id('view-streams').classList.contains('hero')){ cnt.textContent = summary; clearStatus(); }
         else setStatus(summary, 'ok');
-        if (apMode) setTimeout(autoPickNow, 700);   // everyone has answered: a beat to see the list, then the pick
+        if (apMode) setTimeout(function(){ autoPickNow(true); }, 700);   // everyone has answered: a beat to see the list, then the pick
       }
     }
     // one placeholder per add-on, filled as answers arrive, so order is stable
@@ -8466,21 +8609,22 @@
         // rows, so a slow add-on — one takes a minute — was indistinguishable from a stuck page)
         box.innerHTML = canStream(m, type, id) ? streamWait(a) : '';
         waitName = canStream(m, type, id) ? ((a && a.name) || 'Add-on') : null;
-        if (waitName){ waiting.push(waitName); waitRender(); }
+        if (waitName){ waiting.push(waitName); waitRender(); if (apMode === 'best') lcAsk(waitName); }
         var slowT = setTimeout(function(){
           var w = boxPending && box.querySelector('.s-wait small');
           if (w) w.textContent = 'Still looking — some add-ons take up to a minute';
         }, 12000);
         var u = a.base + '/stream/' + encodeURIComponent(type) + '/' + encodeURIComponent(id) + '.json';
-        return getJson(u).then(function(d){
+        return streamJson(u).then(function(d){
           clearTimeout(slowT);
           if (waitName){ waitDone(waitName); waitName = null; }
           if (declares) answered++;
           if (seq !== openSeq) return;
           var streams = streamsForList((d.streams||[]).filter(function(s){ return s.url; }));
+          if (apMode === 'best' && declares) lcAnswered((a && a.name) || 'Add-on', streams.length);
           box.innerHTML = '';
           boxPending = false;
-          if (!streams.length) return;
+          if (!streams.length){ bestEarly(); return; }
           removeLoading();
           sections++;
           box.setAttribute('data-an', a.name || 'Add-on');
@@ -8488,6 +8632,7 @@
             box.innerHTML = '<div class="rowhead"><span class="row-title">'+esc(a.name||'Add-on')+'</span></div>';
           }
           var cards = streams.map(function(s){ total++; var c = streamCard(s, a); box.appendChild(c); return c; });
+          bestEarly();
           // rows that came in go above the add-ons still being asked: a slow add-on high in the list kept the rows
           // that could already play below the fold (seen on his TV, 10-16) — and nothing above moves under the remote
           var wt = list.querySelector('.streamsec .s-wait'), wb = wt && wt.parentNode;
@@ -8517,10 +8662,224 @@
       }).catch(function(){
         if (!known || declares) lost++;
         if (boxPending){ box.innerHTML = ''; boxPending = false; }   // never leave it shimmering
-        if (waitName){ waitDone(waitName); waitName = null; }
+        if (waitName){ if (apMode === 'best') lcAnswered(waitName, 0); waitDone(waitName); waitName = null; bestEarly(); }
       }).then(done);
     });
   }
+
+  // ---- rows from a debrid service (TorBox and the like): the row's name says whether the file is already in its cloud ----
+  // Comet names a file TorBox already holds "[TB⚡] Comet 2160p" and one it would first have to fetch "[TB⬇️] …";
+  // Torrentio-style add-ons write "[TB+]" and "[TB download]". A ready one starts at once, like a file on a fast server;
+  // one that is not ready plays an 8-second clip saying so. "[TB🔄] Comet Sync" is a button for the account, not a film.
+  var RE_DEB = /\[[A-Za-z]{2,3} ?(⚡|\+|⬇|⏳|download)/i;
+  /** 'ready', 'wait' (not in the service's cloud yet), 'action' (a service button) or '' for any other row. */
+  function debridState(s){
+    var n = String((s && s.name) || '');
+    if (/🔄/.test(n) || /\/debrid-sync\//.test(String((s && s.url) || ''))) return 'action';
+    var m = RE_DEB.exec(n); if (!m) return '';
+    return (m[1] === '⚡' || m[1] === '+') ? 'ready' : 'wait';
+  }
+  function debridHeld(s){ var d = debridState(s); return d === 'wait' || d === 'action'; }
+  /** 2 = a TorBox file ready to play at once (his own service, 10-26: "give it the most priority"), 1 = another service's, 0 = the rest. */
+  function streamInstant(s){
+    if (debridState(s) !== 'ready') return 0;
+    return /^\s*\[TB\b|torbox/i.test(String(s.name || '')) ? 2 : 1;
+  }
+  /** A debrid add-on by its name ("Comet | ElfHosted | TB", "Torrentio TB", "… RD"): one still being asked may yet have a 4K. */
+  function debridAddonName(n){ return /\b(TB|RD|AD|PM)\b/.test(String(n || '')) || /torbox|debrid|premiumize/i.test(String(n || '')); }
+  /** A debrid row that sent a few seconds of video instead of the film: Comet answers a file TorBox cannot hand over (not
+      cached yet, a limit reached, the service down) with an 8-second clip that says so, and the TV plays it like the film.
+      Such a play is a failed start: it never ticks the title off, never opens Up next. */
+  function briefClip(){
+    var c = curPlay, d = video.duration;
+    return !!(c && c.deb && /^(movie|series|anime)$/.test(c.type || '') && isFinite(d) && d > 0 && d < 30);
+  }
+  /** The row a launch asked to play by itself (openStreams' 'best'): never a debrid row that is not ready, then one this TV
+      plays with sound, then one ready in TorBox (another debrid cloud next), then 4K over 1080p over the rest, then one this
+      connection carries, then one the add-on says plays here, then the add-on's own order. TorBox and 4K come before the
+      connection ("always prefer tb addon and 4k over normal addons and qualities", 10-27); a silent film does not. */
+  function bestKey(s, ap){
+    ap = ap || apPrefs();
+    return [debridHeld(s) ? 0 : 1, (streamNoSound(s) && !soundHelper()) ? 0 : 1, ap.instant ? streamInstant(s) : 0, apRankOf(s, ap),
+      streamSlow(s) ? 0 : 1, (s.behaviorHints && s.behaviorHints.notWebReady) ? 0 : 1];
+  }
+  /** Quality as the pick sees it: a row above "Aim for" ranks just under the rows at it (and over the lower ones). */
+  function apRankOf(s, ap){ var r = streamRank(s); return r > ap.max ? ap.max - 0.5 : r; }
+  function bestCmp(x, y){ for (var j = 0; j < x.k.length; j++) if (x.k[j] !== y.k[j]) return y.k[j] - x.k[j]; return x.i - y.i; }
+  /** Rows (or {s, a} candidates) in that order, the add-on's own order breaking ties. */
+  function bestRank(list, get){
+    var ap = apPrefs();
+    return list.map(function(x, i){ return { x: x, i: i, k: bestKey(get(x), ap) }; }).sort(bestCmp).map(function(o){ return o.x; });
+  }
+  function bestStreamRows(list){
+    var rows = Array.prototype.slice.call(list.querySelectorAll('.stream:not(.skel)')).filter(function(r){ return r.__s && !debridHeld(r.__s); });
+    return bestRank(rows, function(r){ return r.__s; });
+  }
+  function bestStreamRow(list){ return bestStreamRows(list)[0] || null; }
+  // ---- Netflix-style play (shelf mode): the best stream that actually starts ----
+  /** Settings › Streams › Autoplay the best stream, on a TV only (off by default). A TV whose home screen is Shelf — it
+      starts Nebula with {shelf:1} — had it on before the setting existed and keeps it until the viewer chooses. */
+  function shelfMode(){
+    if (!IS_TV) return false;
+    var v = getPrefs().bestPlay; if (v === true || v === false) return v;
+    try { return LS.getItem('shelf_mode') === '1'; } catch(e){ return false; }
+  }
+  /** The autoplay's own settings, with their defaults. max = the RES_RANK it aims for. */
+  function apPrefs(){
+    var pr = getPrefs();
+    return { max: pr.apMax === '1080' ? 3 : pr.apMax === '720' ? 2 : 4, instant: pr.apInstant !== false,
+      wait: pr.apWait === 'quick' || pr.apWait === 'all' ? pr.apWait : 'balanced',
+      retry: pr.apRetry === 0 || pr.apRetry === 3 ? pr.apRetry : 5,
+      start: pr.apStart === 20 || pr.apStart === 90 ? pr.apStart : 45,
+      back: pr.apBack === 'list' ? 'list' : 'title' };
+  }
+  function shelfModeApply(){ var b = $id('puiStreams'); if (b) b.style.display = shelfMode() ? '' : 'none'; }
+  /** A best pick that would not start: the next one on the ranked list plays instead (five tries), the card says so. */
+  function bestNext(seq, why){
+    // (a debrid clip in place of the film has "played" — 'brief' — and still counts as a start that failed)
+    if (seq !== playSeq || !curPlay || ctx.bestFor !== curPlay.id || !ctx.bestQueue || (stall.playedAt && why !== 'brief')) return false;
+    if (ctx.bestTries >= apPrefs().retry) return false;
+    var cur = lastPlay ? lastPlay.url : '', c = null;
+    srcFailedNote(cur);
+    // rows from add-ons that answered after the pick (a TorBox row starts before the slow ones are in) count too
+    var sl = $id('streamList');
+    if (sl && lastStreamsReq && lastStreamsReq.id === curPlay.id){
+      var fresh = bestStreamRows(sl);
+      if (fresh.length) ctx.bestQueue = fresh.map(function(r){ return { s: r.__s, a: r.__a }; });
+    }
+    for (var i = 0; i < ctx.bestQueue.length; i++){
+      var q = ctx.bestQueue[i];
+      if (q.s.url !== cur && !srcFailed.urls[q.s.url]){ c = q; break; }
+    }
+    if (!c) return false;
+    ctx.bestTries++;
+    clearStatus();
+    lcRetry(c, why);
+    ctx.swapAt = 0; ctx.swapName = '';
+    ctx.pickedFrom = streamSig(c.s, c.a); savePick(ctx.pickedFrom); ctx.playSig = ctx.pickedFrom;
+    playStream(c.s);
+    return true;
+  }
+  /** The player's Streams menu (shelf mode): every row of this title, best first; the one playing is lit. */
+  function streamsMenuFill(){
+    var cur = curPlay; if (!cur) return;
+    var draw = function(cands, late){
+      if (late && puiState.menu !== 'streams') return;   // (a late answer after the menu closed)
+      Array.prototype.slice.call(puiMenuEl.querySelectorAll('.qopt, .qnote')).forEach(function(n){ n.parentNode.removeChild(n); });
+      var ranked = bestRank(cands, function(c){ return c.s; }).slice(0, 15), now = lastPlay ? lastPlay.url : '';
+      if (!ranked.length){ puiNote('No other streams for this title.'); return; }
+      var seen = {}, host = function(u){ try { return new URL(u).hostname.replace(/^www\./, ''); } catch(e){ return ''; } };
+      var lk = function(c){ return srcName(c) + '|' + streamRank(c.s) + '|' + debridState(c.s); };
+      ranked.forEach(function(c){ var k = lk(c); seen[k] = (seen[k] || 0) + 1; });
+      ranked.forEach(function(c){
+        if (debridState(c.s) === 'action') return;        // a service button ("Comet Sync"), not a film
+        var pl = plateFor((c.s.name || '') + '\n' + (c.s.title || c.s.description || '')), b = streamSizeBytes(c.s);
+        var bits = [pl ? (pl.r === '1080' || pl.r === '720' ? pl.r + 'p' : pl.r) : '', srcName(c), streamInstant(c.s) ? 'Instant' : '',
+          b ? (b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : Math.round(b / 1e6) + ' MB') : '',
+          seen[lk(c)] > 1 ? host(c.s.url) : ''].filter(Boolean);   // look-alikes say where they come from
+        var label = bits.join(' · ') + (srcFailed.urls[c.s.url] && c.s.url !== now ? ' — did not play'
+          : debridState(c.s) === 'wait' ? ' — not ready yet'
+          : (streamNoSound(c.s) && !soundHelper()) ? ' — no sound on this TV' : '');
+        menuOpt(label, c.s.url === now, function(){
+          closePuiMenu(false);
+          if (c.s.url === now) return;
+          stall.sib = c; stall.why = ''; srcSwap();
+        });
+      });
+      var on = puiMenuEl.querySelector('.qopt.on') || puiMenuEl.querySelector('.qopt');
+      if (on) setTimeout(function(){ on.focus(); }, 10);
+    };
+    var cands = stallCandidates(cur);
+    if (cands.length) draw(cands);
+    else { puiNote('Looking for streams…'); fetchSiblings(cur.type, cur.id).then(function(c){ draw(c, true); }).catch(function(){ draw([], true); }); }
+  }
+
+  // ---- the launch card: the title's picture and who is still being asked, while a launch's best pick is found, until it plays ----
+  var lc = { on: false, n: 0, asked: 0, answered: 0, hideT: null };
+  function lcShow(meta){
+    var el = $id('launchCard'), back = $id('lcBack'), t = $id('lcTitle'), lg = $id('lcLogo');
+    lc.on = true; lc.n = 0; lc.asked = 0; lc.answered = 0; clearTimeout(lc.hideT);
+    el.classList.remove('picked');
+    $id('lcText').textContent = 'Finding the best stream…';
+    $id('lcWho').innerHTML = '';
+    back.classList.remove('in'); back.style.backgroundImage = '';
+    t.textContent = (meta && meta.name) || ''; t.style.display = ''; lg.style.display = 'none';
+    var id = String((meta && meta.id) || ''), ok = /^tt\d{5,10}$/.test(id);
+    var bg = (meta && meta.background) || (ok ? 'https://images.metahub.space/background/large/' + id + '/img' : '');
+    if (bg){ var im = new Image(); im.onload = function(){ if (!lc.on) return; back.style.backgroundImage = 'url("' + bg + '")'; back.classList.add('in'); }; im.src = bg; }
+    if (ok){
+      var li = new Image();
+      li.onload = function(){ if (!lc.on || li.naturalWidth / li.naturalHeight < 1.6) return; lg.src = li.src; lg.style.display = ''; t.style.display = 'none'; };
+      li.src = 'https://images.metahub.space/logo/medium/' + id + '/img';
+    }
+    el.classList.add('on');
+  }
+  function lcText(){
+    if (!lc.on || $id('launchCard').classList.contains('picked')) return;
+    var left = lc.asked - lc.answered, names = [], all = $id('lcWho').children;
+    for (var i = 0; i < all.length; i++) if (!all[i].className) names.push(all[i].getAttribute('data-n'));
+    var who = names.length === 1 ? names[0] : names.length === 2 ? names[0] + ' and ' + names[1] : left + ' add-ons';
+    $id('lcText').textContent = lc.n
+      ? 'Found ' + lc.n + ' stream' + (lc.n > 1 ? 's' : '') + (left ? ' · still asking ' + who : ' · picking the best')
+      : left ? 'Asking ' + who + ' for streams…' : 'Finding the best stream…';
+  }
+  function lcChip(name){
+    var all = $id('lcWho').children;
+    for (var i = 0; i < all.length; i++) if (all[i].getAttribute('data-n') === name) return all[i];
+    return null;
+  }
+  function lcAsk(name){
+    if (!lc.on || lcChip(name)) return;
+    var s = document.createElement('span'); s.setAttribute('data-n', name);
+    s.innerHTML = '<i class="s-dot"></i>' + esc(name);
+    $id('lcWho').appendChild(s); lc.asked++; lcText();
+  }
+  function lcAnswered(name, n){
+    if (!lc.on) return;
+    var s = lcChip(name); if (!s){ lcAsk(name); s = lcChip(name); }
+    if (!s || s.className) return;
+    s.className = n ? 'done' : 'none';
+    s.innerHTML = '<i class="s-dot"></i>' + esc(name) + '<em>' + (n || 'none') + '</em>';
+    lc.answered++; lc.n += n; lcText();
+  }
+  function lcStarting(s, a, lead){
+    var pl = plateFor((s.name || '') + '\n' + (s.title || s.description || '')), r = pl ? pl.r : '', an = (a && a.name) || '';
+    if (r === '1080' || r === '720') r += 'p';
+    $id('lcText').textContent = (lead || 'Starting') + (r ? ' ' + r : '') + (an ? ' · ' + an : '') + (streamInstant(s) ? ' · instant' : '');
+    $id('launchCard').classList.add('picked');
+    // a start that shows no picture in time ("Give a start", 45 s) gives way to the next best, else the card steps aside
+    clearTimeout(lc.hideT); lc.hideT = setTimeout(function(){ if (lc.on && !bestNext(playSeq, 'slow')) lcHide(); }, apPrefs().start * 1000);
+  }
+  function lcPick(row){ if (lc.on && row.__s) lcStarting(row.__s, row.__a); }
+  function lcRetry(c, why){
+    if (!lc.on){
+      var cp = curPlay || {}, el = $id('launchCard');
+      lc.on = true; el.classList.add('on');
+      if (!$id('lcBack').style.backgroundImage && cp.back){ $id('lcBack').style.backgroundImage = 'url("' + cp.back + '")'; $id('lcBack').classList.add('in'); }
+    }
+    lcStarting(c.s, c.a, why === 'slow' ? 'That one was slow to start · trying' : why === 'brief' ? 'That one wasn\u2019t ready · trying'
+      : 'That one didn\u2019t play · trying');
+  }
+  function lcHide(){
+    if (!lc || !lc.on) return;                     // (setStatus runs before this block has, at boot)
+    lc.on = false; clearTimeout(lc.hideT);
+    $id('launchCard').classList.remove('on');
+  }
+  video.addEventListener('playing', function(){ lcHide(); });
+  // a debrid clip in place of the film: the next best plays (a launch's pick), else the pill offers another row
+  var briefSeq = 0;
+  function briefCheck(){
+    if (briefSeq === playSeq || !briefClip()) return;
+    briefSeq = playSeq;
+    srcFailedNote(lastPlay ? lastPlay.url : '');
+    if (bestNext(playSeq, 'brief')) return;
+    setStatus('This source sent a short message instead of the film — its service could not hand the file over. Try another stream.', 'err');
+    stallOffer('fail');
+  }
+  video.addEventListener('loadedmetadata', briefCheck);
+  video.addEventListener('durationchange', briefCheck);
+  // any key is the viewer taking over: the list underneath is theirs (Back still steps out as ever)
+  window.addEventListener('keydown', function(){ lcHide(); }, true);
 
   // ---------- playback ----------
   function extractClearKeys(stream){
@@ -9898,7 +10257,7 @@
     mp.reconnecting = false; mp.subs = []; mp.cut = false;
     mpvSubStyle();
     mpvApi.set('sub-delay', String(subOffset || 0)); mpvApi.set('sub-speed', subScale.toFixed(6));
-    audDelayApply();
+    audDelayApply(); nightApply();
     if (mp.st.vol >= 0) mpvApi.set('volume', String(Math.round(mp.st.vol)));
     mpvApi.set('mute', mp.st.mute ? 'yes' : 'no');
     // and what was asked for while it reopened: a pause (held, so an older state cannot undo it), a speed, a seek
@@ -10001,7 +10360,7 @@
     } finally { clearTimeout(timer); if (session.wait) session.wait = null; }
     if (seq !== playSeq || mp !== session) return;
     mpvApi.set('sub-delay', String(subOffset || 0)); mpvApi.set('sub-speed', subScale.toFixed(6));
-    audDelayApply();
+    audDelayApply(); nightApply();
     mpvMedia(true);
   }
   function mpvStop(){
@@ -10322,6 +10681,7 @@
     if (seq !== playSeq || stall.failSeq === seq) return;
     stall.failSeq = seq;
     srcFailedNote(url);
+    if (bestNext(seq, 'fail')) return;            // shelf mode / a launch: the next best plays instead of the error
     if (code === 3016 && /^https?:\/\//i.test(url || '') && !/\.(mpd|m3u8)(\?|#|$)/i.test(url) && !(lastPlay && lastPlay.keys)){
       var host = ''; try { host = new URL(url).hostname.replace(/^www\./, ''); } catch(e){}
       var a = await hostAnswer(cleanUrl(url));
@@ -10361,7 +10721,8 @@
     curPlay = ctx.playId ? {
       type: ctx.playType, id: ctx.playId, name: ctx.playTitle || title || '',
       poster: ctx.playPoster || '', shape: ctx.playShape || 'poster', back: ctx.playBack || '',
-      addonUrl: ctx.playAddonUrl || ''
+      addonUrl: ctx.playAddonUrl || '',
+      deb: ctx.rowFor === rawUrl && RE_DEB.test(String(ctx.playRow || '').split('\n')[0])   // a debrid row (briefClip)
     } : null;
     show('player');
     puiReset(title || '');
@@ -10527,7 +10888,7 @@
       subHdrDetect();                    // Settings › Subtitles › In HDR video   // live is known only now (Auto keeps a bigger lead on live streams)
       // the safety net: a file that looked ordinary but Chromium cannot voice restarts through the shell
       if (tcLater) tcCheckProbe(tcc).then(function(){ tcDecide(tcc, seq); });
-      setStatus(swapName ? ('Switched to ' + swapName + '.') : startAt ? (mpvKeptPlace() ? 'This source can only play from the beginning — your place is kept.' : 'Resumed from ' + fmtT(startAt) + '.') : (fresh ? 'Starting from the beginning.' : 'Playing.'), 'ok');
+      if (briefSeq !== seq) setStatus(swapName ? ('Switched to ' + swapName + '.') : startAt ? (mpvKeptPlace() ? 'This source can only play from the beginning — your place is kept.' : 'Resumed from ' + fmtT(startAt) + '.') : (fresh ? 'Starting from the beginning.' : 'Playing.'), 'ok');
       if (tc && tc.lan) setStatus('Sound converted by ' + soundHelperName(tc.lan) + (startAt > 1 ? ' · from ' + fmtT(startAt) : '') + '.', 'ok', 6000);
       try { await video.play(); } catch(e){}
       $id('puiSpin').style.display = 'none';
@@ -12678,6 +13039,11 @@
     var txt = !u ? 'None' : (u > 0 ? '+' : '−') + Math.abs(u).toFixed(1) + ' s (sound ' + (u > 0 ? 'later' : 'earlier') + ')';
     return on ? txt + ' · add-on adds ' + (h.ms > 0 ? '+' : '−') + (Math.abs(h.ms) / 1000).toFixed(2) + ' s' : txt;
   }
+  // Night mode (the full-format player only, like the delay): louder parts down, quieter ones up — the shell holds the
+  // filter and takes yes/no alone. Device-local pref `night`; an older shell refuses the set silently.
+  function nightOn(){ return getPrefs().night === true; }
+  function nightApply(){ if (mp) { try { mpvApi.set('night', nightOn() ? 'yes' : 'no'); } catch(e){} } }
+  function nightSet(v){ notePref('night', !!v); nightApply(); setStatus(v ? 'Night mode on: loud parts quieter, quiet ones clearer' : 'Night mode off', 'ok'); }
   /** The menu again with the same row lit, so a remote can press a nudge several times. */
   function audMenuAgain(){
     var opts = Array.prototype.slice.call(puiMenuEl.querySelectorAll('.qopt')), at = opts.indexOf(document.activeElement);
@@ -13090,7 +13456,7 @@
     if (subPanelEl){ subPanelEl.classList.remove('open'); document.body.classList.remove('sp-on'); }
     puiMenuEl.innerHTML = '';
     var t=document.createElement('div'); t.className='qtitle';
-    t.textContent = { quality:'Quality', audio:'Audio', speed:'Speed', sleep:'Sleep timer', fit:'Picture size' }[kind];
+    t.textContent = { quality:'Quality', audio:'Audio', speed:'Speed', sleep:'Sleep timer', fit:'Picture size', streams:'Streams' }[kind];
     puiMenuEl.appendChild(t);
     if (kind==='quality'){
       var tracks = videoTracks(), heights = distinctHeights(tracks);
@@ -13132,6 +13498,8 @@
           menuOpt(st[1], false, function(){ audDelaySet(audDelayUser() + st[0]); audMenuAgain(); });
         });
         if (audDelayUser()) menuOpt('Back to 0', false, function(){ audDelaySet(0); audMenuAgain(); });
+        var nt = document.createElement('div'); nt.className = 'qtitle qsub'; nt.textContent = 'Night mode'; puiMenuEl.appendChild(nt);
+        menuOpt(nightOn() ? 'On · loud parts quieter, quiet ones clearer' : 'Off', nightOn(), function(){ nightSet(!nightOn()); audMenuAgain(); });
       } else if (langs.length >= 2){
         var curLang=''; try { (player.getVariantTracks()||[]).forEach(function(v){ if(v.active) curLang=v.language; }); } catch(e){}
         langs.forEach(function(l, li){
@@ -13175,6 +13543,8 @@
       var fm = fitMode();
       FIT_MODES.forEach(function(f){ menuOpt(f[1], f[0] === fm, function(){ fitSet(f[0]); closePuiMenu(true); }); });
       puiNote(FIT_NOTES[fm]);
+    } else if (kind==='streams'){
+      streamsMenuFill();
     } else if (kind==='sleep'){
       menuOpt('Off', !sleepState.mode, function(){ sleepSet('', 0); });
       [15,30,45,60,90].forEach(function(m){
@@ -13781,6 +14151,7 @@
   $id('puiSpeed').onclick = function(){ if (puiState.menu==='speed') closePuiMenu(true); else openPuiMenu('speed', this); };
   $id('puiFit').onclick = function(){ if (puiState.menu==='fit') closePuiMenu(true); else openPuiMenu('fit', this); };
   $id('puiSleep').onclick = function(){ if (puiState.menu==='sleep') closePuiMenu(true); else openPuiMenu('sleep', this); };
+  $id('puiStreams').onclick = function(){ if (puiState.menu==='streams') closePuiMenu(true); else openPuiMenu('streams', this); };
 
   // ---- fullscreen ----
   // Hidden on webOS, where the app already owns the whole screen.
@@ -13837,7 +14208,7 @@
     return ctx.addon || null;
   }
   function epStreams(a, type, id){
-    return getJson(a.base + '/stream/' + encodeURIComponent(type) + '/' + encodeURIComponent(id) + '.json')
+    return streamJson(a.base + '/stream/' + encodeURIComponent(type) + '/' + encodeURIComponent(id) + '.json')
       .then(function(d){ return (d.streams||[]).filter(function(x){ return x.url; }); });
   }
   /** Ask `a` for the episode's streams; with none, ask the origin add-on too. When the last pick named
@@ -13974,6 +14345,7 @@
   $id('puiNext').onclick = function(){ autoRun = 0; var nx = nextEpisode(); if (nx) playEpisodeAt(nx.index); };
   video.addEventListener('ended', function(){
     if (puiIsLive()) return;
+    if (briefClip()){ puiShow(); return; }   // (a debrid clip saying the file is not ready: no tick, no Up next)
     noteProgress(0, 0, true);          // finished — ticks it off the episode list
     try { renderContinue(); } catch(e){}
     puiShow();
@@ -14161,7 +14533,7 @@
       try {
         var m = await getManifest(a.url);
         if (!(origin && a.url === origin.url) && !canStream(m, type, id)) return;
-        var d = await getJson(a.base + '/stream/' + encodeURIComponent(type) + '/' + encodeURIComponent(id) + '.json');
+        var d = await streamJson(a.base + '/stream/' + encodeURIComponent(type) + '/' + encodeURIComponent(id) + '.json');
         streamsForList((d.streams || []).filter(function(s){ return s.url; })).forEach(function(s){ out.push({ s: s, a: a }); });
       } catch(e){}
     }));
@@ -14223,7 +14595,7 @@
     for (pass = 0; pass < (loose ? 3 : 2); pass++){
       for (k = 0; k < n; k++){
         var c = cands[(start + k) % n];
-        if (c.s.url === curUrl || srcFailed.urls[c.s.url]) continue;
+        if (c.s.url === curUrl || srcFailed.urls[c.s.url] || debridHeld(c.s)) continue;
         if (pass < 2 && c.s.behaviorHints && c.s.behaviorHints.notWebReady) continue;
         if (pass < 2 && streamNoSound(c.s) && !soundHelper()) continue;      // an LG plays it in silence (DTS)
         if (pass < 2 && curSig && isTwin(c.s, curSig, c.a)) continue;
@@ -16236,6 +16608,15 @@
     segChips('setAddonMark', [['Initial','initial'], ['Name','name'], ['Hidden','hidden']], pr.addonMark === 'name' || pr.addonMark === 'hidden' ? pr.addonMark : 'initial', function(v){ setPref('addonMark', v); });
     segChips('setAutoPick', [['Off','off'], ['Same as last time','same'], ['First stream','first']], pr.autoPick === 'same' || pr.autoPick === 'first' ? pr.autoPick : 'off', function(v){ setPref('autoPick', v); });
     segChips('setPickWait', [['3 s',3], ['6 s',6], ['10 s',10]], pickWaitSecs(), function(v){ setPref('pickWait', v); });
+    var bp = shelfMode(), ap = apPrefs();
+    segChips('setBestPlay', [['On', true], ['Off', false]], bp, function(v){ setPref('bestPlay', v); shelfModeApply(); });
+    segChips('setApMax', [['4K','2160'], ['1080p','1080'], ['720p','720']], ap.max === 3 ? '1080' : ap.max === 2 ? '720' : '2160', function(v){ setPref('apMax', v); });
+    segChips('setApInstant', [['On', true], ['Off', false]], ap.instant, function(v){ setPref('apInstant', v); });
+    segChips('setApWait', [['Quick','quick'], ['Balanced','balanced'], ['All','all']], ap.wait, function(v){ setPref('apWait', v); });
+    segChips('setApRetry', [['Off',0], ['Next 3',3], ['Next 5',5]], ap.retry, function(v){ setPref('apRetry', v); });
+    segChips('setApStart', [['20 s',20], ['45 s',45], ['90 s',90]], ap.start, function(v){ setPref('apStart', v); });
+    segChips('setApBack', [['Title page','title'], ['Streams list','list']], ap.back, function(v){ setPref('apBack', v); });
+    Array.prototype.slice.call(document.querySelectorAll('#setConsole .ap-sub')).forEach(function(r){ r.style.display = bp ? '' : 'none'; });
     segChips('setSlowMark', [['Mark and move down','move'], ['Mark only','mark'], ['Ignore','off']], slowMarkMode(), function(v){ setPref('slowMark', v); });
     // ---- advanced ----
     segChips('setFastRows', [['On', true], ['Off', false]], pr.fastRows !== false, function(v){ setPref('fastRows', v); });
@@ -16523,6 +16904,41 @@
     });
   }
 
+  // ---- a title another app on this TV asked for (Shelf, the home screen, 10-26): launch params
+  // {play:{type, id, name, poster, background}} → a film's streams, and the best one plays by itself; a series opens its page.
+  // Waits for the add-ons to come back from storage and for who's watching to be answered.
+  var launchAsk = null;
+  function launchImg(u){ u = String(u || ''); return /^https:\/\/[^\s"'()<>\\]{1,500}$/.test(u) ? u : ''; }
+  function launchParse(raw){
+    var p = raw;
+    if (typeof p === 'string'){ try { p = JSON.parse(p || '{}'); } catch(e){ p = null; } }
+    var q = p && p.play;
+    if (!q || !/^tt\d{5,10}$/.test(String(q.id || '')) || (q.type !== 'movie' && q.type !== 'series')) return null;
+    return { type: q.type, id: String(q.id), name: String(q.name || '').slice(0, 200),
+      poster: launchImg(q.poster), background: launchImg(q.background), at: Date.now() };
+  }
+  function launchAskFrom(raw){ shelfNote(raw); var a = launchParse(raw); if (!a) return; launchAsk = a; launchAskRun(); }
+  /** Started by Shelf (any launch carries {shelf:1}): this TV plays Netflix-style from now on (kept on the device only). */
+  function shelfNote(raw){
+    var p = raw; if (typeof p === 'string'){ try { p = JSON.parse(p || '{}'); } catch(e){ p = null; } }
+    if (p && p.shelf){ try { LS.setItem('shelf_mode', '1'); } catch(e){} shelfModeApply(); }
+  }
+  function launchAskRun(){
+    var a = launchAsk; if (!a) return;
+    if (!addonsReady || whoOpen){ if (Date.now() - a.at < 120000) setTimeout(launchAskRun, 300); else launchAsk = null; return; }
+    launchAsk = null;
+    if (video.style.display === 'block'){                     // something is playing: this replaces it
+      playSeq++; stopPlayer(); sleepClear();
+      if (party && !party.isHost) endParty('Left the party.');
+    }
+    var meta = { id: a.id, type: a.type, name: a.name, poster: a.poster, background: a.background };
+    ctx.addon = null; ctx.catalog = null; ctx.seriesId = ''; ctx.seriesEpisodes = null; ctx.epIndex = -1;
+    setTab('home');
+    if (a.type === 'series'){ openItem(meta); return; }
+    ctx.item = meta; ctx.streamTitle = null;
+    openStreams('movie', a.id, a.name, false, false, 'best');
+  }
+
   renderAddons();
   initPersistentAddons();
   // invite links: play.rifflehq.in/?party=CODE asks, then joins — the host picks what plays on this device from then on and
@@ -16543,7 +16959,16 @@
   initPersistentRatings();
   initPersistentSeekr();
   buildHomeRows(true);
-  whoBoot();                               // two profiles: who's watching?
+  // two profiles: who's watching? — not when another app started us to play a title (it plays on the profile this TV
+  // was on), unless that profile has a PIN
+  var bootAsk = null; try { if (window.PalmSystem){ shelfNote(window.PalmSystem.launchParams); bootAsk = launchParse(window.PalmSystem.launchParams); } } catch(e){}
+  shelfModeApply();
+  if (!bootAsk || whoNeedsPin(viewer)) whoBoot();
+  if (bootAsk){ launchAsk = bootAsk; launchAskRun(); }
+  // launched again while running (another title from the home screen): webOS hands the new params over here
+  document.addEventListener('webOSRelaunch', function(e){
+    try { launchAskFrom((e && e.detail) || (window.PalmSystem && window.PalmSystem.launchParams)); } catch(err){}
+  });
   // installs from before 10-26 never wrote which account their data belongs to: the one they are signed into
   try { if (cloudLinked() && !LS.getItem('sync_gid')) LS.setItem('sync_gid', cloudLink.gid); } catch(e){}
   if (cloudLinked()) setTimeout(function(){ cloudPullAll(true); profileBoot(); }, 900);

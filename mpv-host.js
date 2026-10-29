@@ -34,6 +34,9 @@ const SETTABLE = { pause: YESNO, mute: YESNO, 'sub-bold': YESNO, volume: NUM, sp
   panscan: /^(0|1|0?\.\d{1,3})$/, keepaspect: YESNO,
   // the player's Audio delay (seconds, the viewer's own + what the add-on says of a dub)
   'audio-delay': NUM };
+// Night mode: louder parts down, quieter ones up (measured with FFmpeg on a tone: −4 → −14 dB, −46 → −39 dB). The page
+// asks for it by yes/no only — a filter string from the page could name a filter that reads files.
+const NIGHT_AF = 'lavfi=[acompressor=threshold=0.063:ratio=4:attack=5:release=200:makeup=2,alimiter=limit=0.89]';
 const SEEK_MODE = /^(absolute|relative)(\+exact|\+keyframes)?$/;
 
 let s = null;                                           // the helper session now running (see start)
@@ -444,6 +447,7 @@ function command(args) {
 /** Only the properties in SETTABLE, each in its own shape. */
 function set(name, value) {
   const v = String(value);
+  if (name === 'night') { if (YESNO.test(v)) fire(['set', 'af', v === 'yes' ? NIGHT_AF : '']); return 0; }
   if (!Object.prototype.hasOwnProperty.call(SETTABLE, name) || v.length > 64 || !SETTABLE[name].test(v)) return 0;
   fire(['set', name, v]);
   return 0;
