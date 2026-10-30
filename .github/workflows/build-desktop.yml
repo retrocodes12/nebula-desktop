@@ -282,7 +282,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          Night mode in the full-format player's Audio menu: loud moments quieter, quiet voices clearer. Back on a paused film leaves the player in one press, and a stream list that fails once is asked again before the add-on counts as failed. Same player as web 2026.10.29.2.
+          A film from a debrid service (TorBox, Real-Debrid and others) is read only by the app playing it: its built-in subtitles are no longer fetched through our server, which could make the service drop the film mid-play. Same player as web 2026.10.30.1.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
