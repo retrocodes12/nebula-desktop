@@ -282,7 +282,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          New stream cards: each stream shows what the file is (title, source, codec, size, seeds), its picture and sound marks, its languages, the add-on and service that have it, and the file's name. Settings > Streams > Stream cards offers Release, Compact, One line, Minimal and Classic, each with a live preview, and Custom to build your own. Same player as web 2026.11.04.2.
+          Smoother stream list: rows are built per add-on in one pass, badge marks are drawn from white pictures instead of a filter, and Up and Down always go to the card above or below. Same player as web 2026.11.04.3.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
