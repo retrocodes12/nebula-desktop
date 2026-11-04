@@ -311,6 +311,15 @@ contextBridge.exposeInMainWorld('nebulaDesktop', {
     set: (on) => ipcRenderer.invoke('relay-set', !!on),
     on: (cb) => { ipcRenderer.on('nebula:relay', (_event, state) => { try { cb(state); } catch (e) {} }); },
   },
+  // Downloads (downloads.js): list() → rows; add({url, headers, meta}) → null or why not; cmd(key, 'pause'|'resume'|'retry'|
+  // 'remove'); sub(key, lang, text) keeps a subtitle beside it; on(cb) streams the rows. A saved copy plays from /dl/<key>/video.<ext>
+  downloads: {
+    list: () => ipcRenderer.invoke('dl-list'),
+    add: (o) => ipcRenderer.invoke('dl-add', o),
+    cmd: (key, c) => ipcRenderer.invoke('dl-cmd', key, c),
+    sub: (key, lang, text) => ipcRenderer.invoke('dl-sub', key, lang, text),
+    on: (cb) => { ipcRenderer.on('nebula:dl', (_event, rows) => { try { cb(rows); } catch (e) {} }); },
+  },
   setMiniMode: (on) => ipcRenderer.invoke('mini-mode', !!on),
   onFlush: (cb) => { ipcRenderer.on('nebula:flush', () => { try { cb(); } catch (e) {} }); },
   transcode: false,                  // the old one-shot answer, for a page that still reads it; the live one is transcodeNow

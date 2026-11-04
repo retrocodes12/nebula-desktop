@@ -5,6 +5,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const os = require('os');
 const relay = require('./relay'), source = require('./source'), conv = require('./convert'), tvsound = require('./tvsound');
+const downloads = require('./downloads');
 
 // ---- FFmpeg in the shell: what Chromium cannot decode (Dolby Digital / DTS / TrueHD audio, HEVC without a hardware
 // decoder) is re-encoded on the fly, the rest copied through. The player asks /probe what a file holds, then pulls /seg
@@ -47,6 +48,22 @@ function relayStart() {
   return relay.start({ dir: app.getPath('userData'), ua: agent, name: os.hostname(), cap: mb > 0 ? mb * 1048576 : 0 });
 }
 ipcMain.on('relay-info', (event) => { event.returnValue = fromPage(event) ? relayState() : null; });
+
+// ---- Downloads (downloads.js): kept in the app's own folder, played back from this app's server (/dl/…)
+let dlReady = false;
+function dlSetup() {
+  if (dlReady) return; dlReady = true;
+  downloads.setup({ dir: path.join(app.getPath('userData'), 'Downloads'), ffmpeg: FFMPEG,
+    push: (l) => { try { if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('nebula:dl', l); } catch (e) {} } });
+}
+ipcMain.handle('dl-list', (e) => { if (!fromPage(e)) return []; dlSetup(); return downloads.list(); });
+ipcMain.handle('dl-add', (e, o) => {
+  if (!fromPage(e)) return null; dlSetup();
+  let ua = 'NebulaPlayer'; try { ua = session.defaultSession.getUserAgent() || ua; } catch (er) {}
+  return downloads.add(Object.assign({}, o, { ua, headers: source.cleanHeaders((o && o.headers) || {}) }));
+});
+ipcMain.handle('dl-cmd', (e, key, c) => (fromPage(e) ? downloads.cmd(String(key || ''), String(c || '')) : false));
+ipcMain.handle('dl-sub', (e, key, lang, body) => (fromPage(e) ? downloads.saveSub(String(key || ''), lang, body) : false));
 ipcMain.handle('relay-set', async (event, on) => {
   if (!fromPage(event)) return null;
   try { if (on) await relayStart(); else await relay.stop(); relayPush(); }
@@ -302,6 +319,12 @@ function startServer() {
           return u.pathname === '/probe' ? conv.probe(src, hd, res) : u.pathname === '/speech' ? conv.speech(u.searchParams, hd, req, res) : conv.segment(u.searchParams, hd, req, res);
         }).catch((e) => { if (!res.headersSent) { res.statusCode = 502; res.end(String((e && e.message) || e)); } });
         return;
+      }
+      if (u.pathname.startsWith('/dl/')) {
+        // a saved copy: the page's engine (same-origin) or the full-format player's helper (sends no Sec-Fetch-Site); never another site
+        const sfs = String(req.headers['sec-fetch-site'] || '');
+        if (sfs && sfs !== 'same-origin') { res.statusCode = 403; res.end('forbidden'); return; }
+        dlSetup(); return downloads.serve(req, res, u.pathname);
       }
       let p = decodeURIComponent((req.url || '/').split('?')[0]);
       if (p === '/' || p === '') p = '/index.html';
