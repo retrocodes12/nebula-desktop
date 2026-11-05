@@ -282,7 +282,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          Continue Watching works like Nuvio's: one card per show, and when you finish an episode the next one waits there as Up next ("New episode" when it just came out). 90% in counts as watched; hold a card for Mark as watched. Closed the app in the middle of something? It offers it back when you return. A content advisory (Violence · Severe …) shows for a few seconds as a title starts (Settings › Playback). Same player as web 2026.11.05.1.
+          Age ratings: every film and series shows its rating for your country (UA, A, PG-13, TV-MA …) on its title page and on the featured banner, and as the first line of the content advisory when it starts. Same player as web 2026.11.05.2.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
