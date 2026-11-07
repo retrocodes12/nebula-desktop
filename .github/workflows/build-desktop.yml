@@ -282,7 +282,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          A once-a-day usage counter with no identifier in it (how many days ago Nebula was first opened on this computer, nothing else) so we can see how many new people come back; the privacy page says exactly what it sends. Same player as web 2026.11.07.1.
+          With two profiles, Who's watching now comes up first when Nebula opens, and the loading screen follows once you pick a profile. Same player as web 2026.11.07.2.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
