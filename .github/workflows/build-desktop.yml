@@ -282,7 +282,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          Watch party, rebuilt: everyone can pause, skip and change the speed (or only the host), the party waits for whoever is buffering, you can pause or rewind for yourself and catch up, chat, who is watching and what each is doing, Remove and End for everyone, and friends can play the same file from their own add-ons. Same player as web 2026.11.06.1.
+          A once-a-day usage counter with no identifier in it (how many days ago Nebula was first opened on this computer, nothing else) so we can see how many new people come back; the privacy page says exactly what it sends. Same player as web 2026.11.07.1.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
