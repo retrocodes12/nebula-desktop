@@ -57,7 +57,7 @@ function mpvPicture() {
     '  }',
     '  gl_FragColor = vec4(pow(clamp(l / 203.0, 0.0, 1.0), vec3(1.0 / 2.4)), 1.0);',
     '}'].join('\n');
-  let onEvent = null, base = info0.base || '', props = {}, tracks = [];
+  let onEvent = null, base = info0.base || '', props = {}, tracks = [], chapters = [];
   let canvas = null, gl = null, gl2 = false, bw = 0, bh = 0, rw = 0, rh = 0, tw = 0, th = 0, vw = 0, vh = 0, uMode = null, mode = 0, modeSet = -1;
   let running = false, pumpId = 0, next = null, raf = 0, frames = 0, drawn = 0, upMs = 0, lastCount = 0, count0 = 0, lastGen = -1, staleGen = -1;
   let scale = 1, drawEma = 0, slowAt = 0, quickAt = 0, lastDrop = 0, hist = [], drawGap = 0, lastDrawAt = 0;
@@ -239,6 +239,7 @@ function mpvPicture() {
         sc: Math.round(scale * 100) / 100 });
     }
     if ((m.type === 'tracks' || m.type === 'loaded') && Array.isArray(m.tracks)) tracks = m.tracks;
+    if ((m.type === 'chapters' || m.type === 'loaded') && Array.isArray(m.chapters)) chapters = m.chapters;
     emit(m);
   });
   window.addEventListener('pagehide', () => { if (running) { running = false; pumpId++; ipcRenderer.send('mpv-stop'); } });
@@ -270,7 +271,7 @@ function mpvPicture() {
     command(a) { ipcRenderer.send('mpv-command', a); return 0; },
     set(k, v) { ipcRenderer.send('mpv-set', String(k), String(v)); return 0; },
     /** An observed property in mpv's string form (the last state), or the track list as JSON. */
-    get(k) { if (k === 'track-list') return JSON.stringify(tracks); const v = props[k]; return v == null ? null : String(v); },
+    get(k) { if (k === 'track-list') return JSON.stringify(tracks); if (k === 'chapter-list') return JSON.stringify(chapters); const v = props[k]; return v == null ? null : String(v); },
     /** keep: the last picture stays on the canvas (a play that failed stands under its sentence). */
     stop(keep) {
       running = false; pumpId++; next = null;

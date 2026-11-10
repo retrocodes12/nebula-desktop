@@ -282,7 +282,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          Smoother all round: pages, menus and sheets glide into place and the selected tab slides. Arrows at the edges of a row page it with the mouse. Fixed a hidden spinner that kept every screen redrawing, and a page that blinked when you went back quickly. Same player as web 2026.11.10.3.
+          New: chapters. A file that carries them gets marks on the bar, the chapter's name while you scrub and a Chapters list (C), and an opening or closing credits that a chapter names can be skipped. A Trailer button on title pages. Track what you watch on MDBList from Settings › Playback. In Settings › Appearance: an ambient slideshow for a screen left alone, and posters from an address of your own. Same player as web 2026.11.10.6.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \

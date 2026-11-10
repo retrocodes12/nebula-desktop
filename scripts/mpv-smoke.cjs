@@ -33,8 +33,8 @@ function frameOf(b) {
   host.setOrigin(ORIGIN);
   if (!host.available()) return fail(host.whyNot());
   if (!(await host.probe())) return fail('the probe found no libmpv that works: ' + host.whyNot());
-  let opened = false, err = '', ends = [];
-  host.on((e) => { if (e.type === 'loaded') opened = true; if (e.type === 'end') { ends.push(e); if (e.reason === 'error') err = e.error + (e.detail ? ' — ' + e.detail : ''); } });
+  let opened = false, err = '', ends = [], chapters = null;
+  host.on((e) => { if (e.type === 'loaded') { opened = true; chapters = e.chapters; } if (e.type === 'chapters') chapters = e.chapters; if (e.type === 'end') { ends.push(e); if (e.reason === 'error') err = e.error + (e.detail ? ' — ' + e.detail : ''); } });
   try { await host.start(); } catch (e) { return fail('the helper did not start: ' + e.message); }
   const base = host.frameBase();
   if (!/^http:\/\/127\.0\.0\.1:\d+\/[0-9a-f]{32}\/f$/.test(base)) return fail('no frame address (' + base + ')');
@@ -59,6 +59,16 @@ function frameOf(b) {
   while (!opened && !err && Date.now() - t0 < 20000) await wait(50);
   if (err) return fail('the clip would not open: ' + err);
   if (!opened) return fail('the clip did not open in 20 s');
+  // the file's chapter list rides with the load, or follows it in a 'chapters' event (mpv reports the property a moment
+  // after the file opens) — the page draws the bar's cuts from it; EXPECT_CHAPTERS=<n> for a clip that has them
+  if (!Array.isArray(chapters)) return fail('the load carried no chapter list');
+  if (process.env.EXPECT_CHAPTERS) {
+    const want = Number(process.env.EXPECT_CHAPTERS), tc = Date.now();
+    while (chapters.length !== want && Date.now() - tc < 5000) await wait(50);
+    if (chapters.length !== want || !chapters.every((c) => c && typeof c.time === 'number' && typeof c.title === 'string'))
+      return fail('the chapter list is ' + JSON.stringify(chapters).slice(0, 200));
+    console.log('chapters: ' + chapters.map((c) => c.time + ' ' + c.title).join(' · '));
+  }
   let last = 0, got = 0, f = null, r = null;
   while (got < 30 && Date.now() - t0 < 30000) {
     r = await grab(base + '?after=' + last + '&w=320&h=180&pad=1');

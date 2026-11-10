@@ -14,7 +14,8 @@ const MAX_W = 1920, MAX_H = 1080, WIN = process.platform === 'win32';
 const OBSERVE = ['time-pos', 'duration', 'pause', 'paused-for-cache', 'seeking', 'eof-reached', 'idle-active', 'volume', 'mute', 'speed',
   'demuxer-cache-duration', 'dwidth', 'dheight', 'frame-drop-count', 'estimated-vf-fps', 'container-fps', 'video-bitrate', 'audio-bitrate',
   'aid', 'sid', 'audio-codec-name', 'video-codec', 'audio-params/channel-count', 'demuxer-via-network', 'track-list', 'sub-text', 'mpv-version',
-  'hwdec-current', 'video-params/gamma', 'video-params/primaries', 'seekable', 'file-size', 'demuxer-cache-idle', 'demuxer-cache-time', 'audio-delay'];
+  'hwdec-current', 'video-params/gamma', 'video-params/primaries', 'seekable', 'file-size', 'demuxer-cache-idle', 'demuxer-cache-time', 'audio-delay',
+  'chapter-list'];
 // a read the host never answers ends at mpv's network-timeout (10 s, the options below): this long without anything new
 // while mpv's reader waits on the network is a stall about to end so — and anything that ends sooner was a close
 const STALL_MS = 9000;
@@ -325,6 +326,7 @@ function event(ss, m) {
     ss.props[m.name] = m.data;
     if (m.name === 'mpv-version' && m.data) ver = String(m.data).replace(/^mpv\s*/, '');
     if (ss === s && m.name === 'track-list' && ss.loaded) emit({ type: 'tracks', tracks: m.data || [] });
+    if (ss === s && m.name === 'chapter-list' && ss.loaded) emit({ type: 'chapters', chapters: m.data || [] });   // [{title, time}]
     return;
   }
   if (m.event === 'log-message') {
@@ -353,7 +355,7 @@ function event(ss, m) {
     if (ss.oldSubs && ss.oldSubs.length) { ss.oldSubs.forEach((f) => fs.unlink(f, () => {})); ss.oldSubs = []; }   // mpv has let them go
   } else if (m.event === 'file-loaded') {
     if (!ours(ss)) return;
-    ss.loaded = true; emit({ type: 'loaded', tracks: ss.props['track-list'] || [], version: ver });
+    ss.loaded = true; emit({ type: 'loaded', tracks: ss.props['track-list'] || [], chapters: ss.props['chapter-list'] || [], version: ver });
   } else if (m.event === 'end-file') {
     if (ss.killed) return;   // (a helper this side ends — the chip's picture failed: its tidy quit is no end; the close picks the play up)
     if (ss.expect == null || ss.expect === 'next' || (m.playlist_entry_id != null && m.playlist_entry_id !== ss.expect)) return;   // replaced or stopped: not news
