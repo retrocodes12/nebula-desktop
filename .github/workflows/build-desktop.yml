@@ -282,7 +282,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          New: your downloads play on your TV. With Settings › Playback › Share with your TV on, a TV on your network signed in to the same profile lists what you downloaded on this computer under Library › On your computer and plays it straight from here, with its subtitles and your place in it. Sound the TV cannot play is converted on the way. Needs Nebula 1.126.0 or newer on the TV. Same player as web 2026.11.11.1.
+          Fixed: sound converted for your TV no longer stops. When the TV left a piece half-read (a seek, its memory full) this computer kept counting that conversion as running, and after three it refused every later one until sharing was switched off and on: the film went silent. The TV can now also take a film as one long stream and read it at its own pace, which ends the short stalls every few seconds. Needs Nebula 1.126.1 on the TV. Same player as web 2026.11.11.2.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \

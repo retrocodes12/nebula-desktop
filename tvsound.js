@@ -55,8 +55,12 @@ async function gate(res, u) {
 function track(ff, res, seg) {
   if (!ff) return;
   const k = { ff, res, seg: !!seg }; kids.add(k);
-  ff.on('close', () => kids.delete(k));
-  ff.on('error', () => kids.delete(k));
+  // The slot is given back when the process ENDS ('exit'), not when its pipes are done ('close'): a TV that drops a piece
+  // half-read (a seek, its media buffer full) gets the conversion killed with megabytes still queued for it, and a child's
+  // 'close' waits for someone to read those. It never came; three dropped pieces and every later one was refused as busy
+  // until sharing was switched off and on — "stopped converting the sound (piece 503)", his LG, 2026-11-11.
+  const gone = () => kids.delete(k);
+  ff.on('exit', gone); ff.on('close', gone); ff.on('error', gone);
 }
 async function probe(req, res, u) {
   if (probes >= MAX_PROBES) return busy(res);

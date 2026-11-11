@@ -107,9 +107,12 @@ async function segment(q, hd, req, res, o) {
 // 'V' or 'A', four bytes of length (big-endian), the bytes — which the player feeds to its two buffers.
 const TAG_V = 0x56, TAG_A = 0x41;
 function frame(tag, d) { const h = Buffer.allocUnsafe(5); h[0] = tag; h.writeUInt32BE(d.length, 1); return Buffer.concat([h, d]); }
+// A television may ask for one LONG piece (up to two hours) and read it as slowly as its memory allows: while it is not
+// reading, the answer backs up, both outputs pause and FFmpeg waits on its pipes. One conversion, no joins — where two
+// pieces met, his LG stalled for ~0.4 s (11-11).
 async function segmentTv(q, hd, req, res, o) {
   const src = q.get('src') || '';
-  const t = Math.max(0, Number(q.get('t')) || 0), len = Math.min(30, Math.max(2, Number(q.get('len')) || 10));
+  const t = Math.max(0, Number(q.get('t')) || 0), len = Math.min(7200, Math.max(2, Number(q.get('len')) || 10));
   const a = Math.max(0, Number(q.get('a')) || 0), vcodec = q.get('vc') || '', st = Math.max(0, Number(q.get('st')) || 0);
   const input = o.input || await source.urlFor(src, hd, agent(), o.guard); if (req.destroyed) return;   // o.input: a saved copy on this disk
   const MP4 = ['-f', 'mp4', '-movflags', 'frag_keyframe+delay_moov+default_base_moof', '-frag_duration', '1000000'];
@@ -128,8 +131,15 @@ async function segmentTv(q, hd, req, res, o) {
     s.on('end', () => { if (--open === 0 && !res.writableEnded) res.end(); });
     s.on('error', () => { try { res.destroy(); } catch (e) {} });
   });
-  const kill = () => { killed = true; try { ff.kill('SIGKILL'); } catch (e) {} };
-  req.on('close', kill);
+  // the TV left the piece (a seek, Back, its buffer full): the conversion ends, and so do its pipes — what is still queued in
+  // them has no reader any more (the answer was waiting on a 'drain' a closed connection never sends), and a pipe left
+  // holding bytes keeps the child from ever reporting 'close'
+  const kill = () => {
+    killed = true; try { ff.kill('SIGKILL'); } catch (e) {}
+    outs.forEach((x) => { try { x.destroy(); } catch (e) {} });
+    [ff.stdio[3], ff.stdio[4], ff.stderr].forEach((x) => { try { x.destroy(); } catch (e) {} });
+  };
+  req.on('close', kill); res.on('close', () => { if (!res.writableFinished) kill(); });
   ff.on('error', (e) => { console.error('ffmpeg tv seg spawn', e && e.message || e); try { res.destroy(); } catch (e2) {} });
   ff.on('close', (code, sig) => { if ((code || sig) && !res.writableEnded) { try { res.destroy(); } catch (e) {} } if ((code || sig) && !killed) console.error('ffmpeg tv seg exit', code || sig, err.trim().slice(-300)); });
   return ff;
