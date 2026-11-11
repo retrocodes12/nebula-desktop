@@ -74,7 +74,8 @@ ipcMain.handle('relay-set', async (event, on) => {
 const httpUrl = (u) => /^https?:\/\/[^\s"'<>]{4,2000}$/i.test(u || '');
 // FFmpeg's routes (convert.js) hear the page's own User-Agent; the TV's sound helper rides on the sharing server (tvsound.js)
 conv.setup({ ffmpeg: FFMPEG, ffprobe: FFPROBE, agent: () => { try { return session.defaultSession.getUserAgent(); } catch (e) { return ''; } } });
-tvsound.attach(relay, tcReady);
+tvsound.attach(relay, tcReady, (key) => { dlSetup(); return downloads.fileOf(key); });
+downloads.attach(relay, dlSetup);   // …and the TV lists and plays this computer's finished downloads through the same listener
 // ---- In-app update. The installer build asks GitHub for the newest release through electron-updater: the latest.yml
 // beside the installer names the file and its sha512, the blockmap makes the download differential, and the installer runs
 // silently on restart into the same folder. The portable build cannot be replaced by an installer: it downloads the new

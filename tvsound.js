@@ -12,6 +12,10 @@
 // Safety, on top of the listener's token: http(s) files only, and only from the internet — the host and every redirect
 // are resolved, checked and pinned (source.js guard, relay.js privateTarget), so whoever holds the token cannot reach this
 // machine or the network it sits on. At most a few conversions at once; everything stops when sharing stops.
+//
+// One file on this machine IS allowed: a copy this app saved itself (Downloads), named by its key and never by a path —
+//   GET /relay/probe?dl=<key>&k=…   GET /relay/seg?dl=<key>&t=…&k=…
+// so a saved DTS film plays on the TV with sound like a streamed one (2026-11-11). FFmpeg reads it straight from the disk.
 const conv = require('./convert'), source = require('./source');
 const dns = require('dns');
 
@@ -22,7 +26,7 @@ const CODEC = process.env.NEBULA_TVSOUND_CODEC === 'opus' ? 'opus' : 'eac3';
 const TAG = CODEC === 'opus' ? 'opus' : 'ec-3';
 const httpUrl = (u) => /^https?:\/\/[^\s"'<>]{4,4000}$/i.test(u || '');
 
-let relay = null, ready = () => Promise.resolve(false), probes = 0;
+let relay = null, ready = () => Promise.resolve(false), probes = 0, savedFile = () => '';
 const kids = new Set();        // { ff, res } of every conversion running for the TV
 
 function json(res, status, body) { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body)); }
@@ -34,10 +38,16 @@ function hostOk(src) {
     dns.lookup(h, (err, address) => ok(!err && !relay.privateTarget(address)));
   });
 }
-/** What is common to both routes: FFmpeg here, an http(s) file on the internet, the add-on's headers. */
+/** What is common to both routes: FFmpeg here, and either an http(s) file on the internet with the add-on's headers
+    or one of this app's own saved copies (`dl=<key>` → `input`, its path on this disk). */
 async function gate(res, u) {
-  const src = u.searchParams.get('src') || '';
+  const src = u.searchParams.get('src') || '', dl = u.searchParams.get('dl') || '';
   if (!(await ready())) { json(res, 501, { error: 'no ffmpeg' }); return null; }
+  if (dl) {
+    const input = /^[0-9a-f]{16}$/.test(dl) ? savedFile(dl) : '';
+    if (!input) { json(res, 404, { error: 'no such download' }); return null; }
+    return { src: '', hd: {}, input };
+  }
   if (!httpUrl(src)) { json(res, 400, { error: 'bad src' }); return null; }
   if (!(await hostOk(src))) { json(res, 403, { error: 'refused address' }); return null; }
   return { src, hd: source.parseHeaders(u.searchParams.get('h')) };
@@ -54,7 +64,7 @@ async function probe(req, res, u) {
   let gone = false; req.on('close', () => { gone = true; });
   try {
     const g = await gate(res, u); if (!g || gone) return;
-    const ff = await conv.probe(g.src, g.hd, res, { guard: relay.privateTarget, gone: () => gone });
+    const ff = await conv.probe(g.src, g.hd, res, { guard: relay.privateTarget, gone: () => gone, input: g.input });
     if (ff) { track(ff, res, false); await new Promise((ok) => { ff.on('close', ok); ff.on('error', ok); }); }
   } catch (e) { if (!res.headersSent) json(res, 502, { error: 'probe failed', detail: String((e && e.message) || e) }); }
   finally { probes--; }
@@ -63,7 +73,7 @@ async function seg(req, res, u) {
   const g = await gate(res, u); if (!g || req.destroyed) return;
   let n = 0; kids.forEach((k) => { if (k.seg) n++; });
   if (n >= MAX_SEGS) return busy(res);
-  track(await conv.segment(u.searchParams, g.hd, req, res, { tv: true, codec: CODEC, guard: relay.privateTarget }), res, true);
+  track(await conv.segment(u.searchParams, g.hd, req, res, { tv: true, codec: CODEC, guard: relay.privateTarget, input: g.input }), res, true);
 }
 /** Sharing stopped (the switch, the app closing): no conversion outlives it. */
 function stopAll() {
@@ -71,9 +81,10 @@ function stopAll() {
   kids.clear();
 }
 
-/** Put the TV's sound routes on the sharing listener. `isReady()` → Promise<bool>: FFmpeg and FFprobe run here. */
-function attach(r, isReady) {
-  relay = r; ready = isReady || ready;
+/** Put the TV's sound routes on the sharing listener. `isReady()` → Promise<bool>: FFmpeg and FFprobe run here.
+    `saved(key)` → the path of a finished download, or '' (downloads.js fileOf). */
+function attach(r, isReady, saved) {
+  relay = r; ready = isReady || ready; if (typeof saved === 'function') savedFile = saved;
   relay.route('/relay/probe', (req, res, u) => { probe(req, res, u).catch(() => { try { if (!res.headersSent) res.writeHead(500); res.end(); } catch (e) {} }); });
   relay.route('/relay/seg', (req, res, u) => { seg(req, res, u).catch(() => { try { if (!res.headersSent) res.writeHead(500); res.end(); } catch (e) {} }); });
   relay.health(() => ready().then((ok) => (ok ? { sound: { codec: TAG, v: 2, split: true } } : {}), () => ({})));

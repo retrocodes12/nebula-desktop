@@ -3,6 +3,9 @@
 // are words: only a finished file or a finished unprotected playlist — never live, protected, a web page or a torrent.
 // A plain file is fetched with Range so a break resumes where it stopped; a playlist is saved by the bundled FFmpeg
 // (-c copy into Matroska). Two at a time. The player plays a saved copy from this app's own server (/dl/<key>/…).
+// A TV on the same network plays them too (2026-11-11, his "play downloaded videos on my laptop nebula in my tv nebula"):
+// while Share with your TV is on, the sharing listener (relay.js, token-gated) lists the finished copies and serves them
+// — /relay/dl/list, /relay/dl/<key>/video.<ext>, /relay/dl/<key>/sub/<i>.<ext> (`attach`). Nothing else on this disk.
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -47,6 +50,22 @@ function pub(it) {
     subs: (it.subs || []).map((s, i) => ({ i, lang: s.lang })), hls: it.kind === 'hls', streamName: it.streamName || '', streamTitle: it.streamTitle || '' };
 }
 function list() { return items.map(pub); }
+/** What a TV is told of one finished copy: enough to show and play it. Never the add-on's address (it can carry the
+    viewer's own keys) nor where the file came from. */
+function tvRow(it) {
+  return { key: it.key, viewer: it.viewer, type: it.type, id: it.id, name: it.name, poster: it.poster || '', source: it.source || '',
+    fileName: it.fileName || '', ext: path.extname(it.file), bytes: it.bytes || it.total || 0, at: it.at,
+    subs: (it.subs || []).map((s, i) => ({ i, lang: s.lang, ext: path.extname(s.file) })), streamName: it.streamName || '', streamTitle: it.streamTitle || '' };
+}
+/** The finished copies of one viewer (who's watching: 'a' or 'b'), newest first — those whose file is still here. */
+function shared(viewer) { return items.filter((it) => it.viewer === (viewer === 'b' ? 'b' : 'a') && fileOf(it.key)).map(tvRow); }
+/** Where a finished copy is on this disk, or '' — the only way a key ever becomes a path. */
+function fileOf(key) {
+  const it = /^[0-9a-f]{16}$/.test(String(key || '')) ? find(key) : null;
+  if (!it || it.state !== 'done') return '';
+  const f = path.join(dir, it.file);
+  try { return fs.statSync(f).isFile() ? f : ''; } catch (e) { return ''; }
+}
 /** Progress is told at most once a second; a state change at once. */
 function notify(now) {
   save();
@@ -262,9 +281,10 @@ function saveSub(key, lang, body) {
 }
 
 const MIME = { '.mkv': 'video/x-matroska', '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.avi': 'video/x-msvideo', '.ts': 'video/mp2t', '.srt': 'text/plain; charset=utf-8', '.vtt': 'text/vtt; charset=utf-8' };
-/** /dl/<key>/video.<ext> and /dl/<key>/sub/<i>: a saved copy, with Range (both engines seek with it). */
+/** /dl/<key>/video.<ext> and /dl/<key>/sub/<i>: a saved copy, with Range (both engines seek with it). A TV asks for a
+    subtitle with its extension (sub/<i>.srt): its engine reads the kind of file from the address. */
 function serve(req, res, pathname) {
-  const m = /^\/dl\/([0-9a-f]{16})\/(?:video\.[a-z0-9]+|sub\/(\d+))$/.exec(pathname);
+  const m = /^\/dl\/([0-9a-f]{16})\/(?:video\.[a-z0-9]+|sub\/(\d+)(?:\.[a-z]{2,4})?)$/.exec(pathname);
   const it = m && find(m[1]);
   if (!it || it.state !== 'done') { res.statusCode = 404; res.end('not found'); return; }
   const f = m[2] != null ? (it.subs[Number(m[2])] && path.join(dir, it.key + '-subs', it.subs[Number(m[2])].file)) : path.join(dir, it.file);
@@ -285,4 +305,20 @@ function serve(req, res, pathname) {
   fs.createReadStream(f).pipe(res);
 }
 
-module.exports = { setup, list, add, cmd, saveSub, serve, _sniff: sniff, _playlist: playlist };
+/** The TV's side of Downloads, on the sharing listener: the list of one viewer's finished copies and the files themselves.
+    `ready()` makes sure the index is loaded (main.js sets Downloads up the first time anything asks). The listener has
+    already checked the token and answers CORS; it stops with sharing, and takes every open file with it. */
+function attach(relay, ready) {
+  relay.route('/relay/dl/', (req, res, u) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); res.end(); return; }
+    try { if (ready) ready(); } catch (e) {}
+    if (u.pathname === '/relay/dl/list') {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ v: 1, items: shared(u.searchParams.get('v')) })); return;
+    }
+    serve(req, res, u.pathname.slice('/relay'.length));
+  });
+  relay.health(() => ({ dl: { v: 1 } }));
+}
+
+module.exports = { setup, list, add, cmd, saveSub, serve, shared, fileOf, attach, _sniff: sniff, _playlist: playlist };

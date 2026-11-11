@@ -14,11 +14,13 @@ const NET = ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_ma
 // What the file holds: duration, the video codec, every audio and subtitle track. When FFprobe cannot read it,
 // what the host did instead (a 403, a page) — the player turns that into a sentence.
 // `o.guard` (the TV's requests): the host and every redirect must be on the internet (source.js refuses the rest).
+// `o.input`: a file on this computer's own disk (a saved copy asked for by the TV) — read as it is, no network options.
 async function probe(src, hd, res, o) {
-  const input = await source.urlFor(src, hd, agent(), o && o.guard);
+  const local = !!(o && o.input);
+  const input = local ? o.input : await source.urlFor(src, hd, agent(), o && o.guard);
   if (o && o.gone && o.gone()) return null;
   // the track list sits in the header: a second of packets is plenty, and keeps a 25 Mbps remux from costing 16 MB per play
-  const ff = spawn(FFPROBE, ['-v', 'error', ...NET, '-print_format', 'json', '-show_streams', '-show_format', '-analyzeduration', '1M', '-probesize', '5M', input], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const ff = spawn(FFPROBE, ['-v', 'error', ...(local ? [] : NET), '-print_format', 'json', '-show_streams', '-show_format', '-analyzeduration', '1M', '-probesize', '5M', input], { stdio: ['ignore', 'pipe', 'pipe'] });
   let out = '', err = '';
   const timer = setTimeout(() => { try { ff.kill('SIGKILL'); } catch (e) {} }, 25000);
   ff.stdout.on('data', (d) => { out += d; });
@@ -109,9 +111,9 @@ async function segmentTv(q, hd, req, res, o) {
   const src = q.get('src') || '';
   const t = Math.max(0, Number(q.get('t')) || 0), len = Math.min(30, Math.max(2, Number(q.get('len')) || 10));
   const a = Math.max(0, Number(q.get('a')) || 0), vcodec = q.get('vc') || '', st = Math.max(0, Number(q.get('st')) || 0);
-  const input = await source.urlFor(src, hd, agent(), o.guard); if (req.destroyed) return;
+  const input = o.input || await source.urlFor(src, hd, agent(), o.guard); if (req.destroyed) return;   // o.input: a saved copy on this disk
   const MP4 = ['-f', 'mp4', '-movflags', 'frag_keyframe+delay_moov+default_base_moof', '-frag_duration', '1000000'];
-  const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', ...NET, '-copyts', '-ss', String(t), '-i', input,
+  const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', ...(o.input ? [] : NET), '-copyts', '-ss', String(t), '-i', input,
     '-map', '0:v:0', '-sn', '-dn', '-an', '-c:v', 'copy', ...(/hevc|h265/i.test(vcodec) ? ['-tag:v', 'hvc1'] : []), '-to', String(t + len), ...MP4, 'pipe:3',
     '-map', '0:a:' + a, '-sn', '-dn', '-vn', ...audioArgs(q, o), '-to', String(t + len), ...MP4, 'pipe:4'];
   const ff = spawn(FFMPEG, args, { stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'] });
