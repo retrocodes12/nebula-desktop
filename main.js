@@ -228,7 +228,7 @@ function portableInstall() {
   } catch (e) {
     // could not swap: the new file is there for the person to open by hand
     try { shell.showItemInFolder(upd.file); } catch (e2) {}
-    updSet({ state: 'error', error: 'Nebula could not replace itself. The new version is saved beside it as ' + path.basename(upd.file) + ' — close Nebula and open that file.' });
+    updSet({ state: 'error', error: 'Nebula could not replace itself. The new version is saved beside it as ' + path.basename(upd.file) + '. Close Nebula and open that file.' });
     return upd;
   }
   updSet({ state: 'installing' });

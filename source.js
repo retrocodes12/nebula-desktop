@@ -207,7 +207,7 @@ function handle(req, res) {
     let seen = false;
     up.once('data', (first) => {
       seen = true;
-      if (up.statusCode < 300 && /^(﻿)?#EXTM3U/.test(first.slice(0, 16).toString('utf8'))) return playlist(up, first, at, m[2], res);
+      if (up.statusCode < 300 && /^(\uFEFF)?#EXTM3U/.test(first.slice(0, 16).toString('utf8'))) return playlist(up, first, at, m[2], res);
       if (keepable) { e.size = cr ? Number(cr[3]) : Number(up.headers['content-length']); e.type = String(up.headers['content-type'] || ''); capture(e, off, up, first); }
       res.writeHead(up.statusCode, hd); res.write(first); up.pipe(res);
     });

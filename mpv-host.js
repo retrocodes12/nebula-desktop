@@ -197,7 +197,7 @@ function start() {
       if (!done) {
         if (own && chip() && !FATAL[code]) { gpu.broke('the player would not start drawing on the graphics chip', false); return again(); }
         const m = /^ERROR\s*(.*)$/m.exec(out);
-        return give((m ? m[1].trim() : 'the player helper stopped (' + (code != null ? 'exit ' + code : sig) + ')') + (last ? ' — ' + last : ''), !!FATAL[code]);
+        return give((m ? m[1].trim() : 'the player helper stopped (' + (code != null ? 'exit ' + code : sig) + ')') + (last ? ': ' + last : ''), !!FATAL[code]);
       }
       const inPlay = ss.loaded || ss.busy, current = s === ss;
       if (current) s = null;

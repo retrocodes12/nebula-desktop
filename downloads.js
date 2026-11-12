@@ -115,7 +115,7 @@ function sniff(url, headers) {
       const total = m ? Number(m[1]) : (st === 200 ? Number(res.headers['content-length'] || 0) : 0);
       let head = Buffer.alloc(0);
       const fin = () => {
-        const t = head.toString('utf8').replace(/^﻿/, '').trimStart(), low = t.slice(0, 256).toLowerCase();
+        const t = head.toString('utf8').replace(/^\uFEFF/, '').trimStart(), low = t.slice(0, 256).toLowerCase();
         if (t.startsWith('#EXTM3U') || type.indexOf('mpegurl') >= 0) return ok({ hls: true, url: res.url });
         if (low.indexOf('<mpd') >= 0 || type.indexOf('dash+xml') >= 0) return ok({ refused: NO_KIND });
         if (type.indexOf('text/html') >= 0 || low.startsWith('<!doctype') || low.startsWith('<html')) return ok({ refused: NO_PAGE });
@@ -274,7 +274,7 @@ function cmd(key, c) {
 function saveSub(key, lang, body) {
   const it = find(key); if (!it || typeof body !== 'string' || body.length > 5e6) return false;
   const sub = path.join(dir, it.key + '-subs'); try { fs.mkdirSync(sub, { recursive: true }); } catch (e) {}
-  const i = (it.subs || []).length, ext = /^﻿?\s*WEBVTT/.test(body) ? '.vtt' : '.srt';
+  const i = (it.subs || []).length, ext = /^\uFEFF?\s*WEBVTT/.test(body) ? '.vtt' : '.srt';
   try { fs.writeFileSync(path.join(sub, 'sub-' + i + ext), body); } catch (e) { return false; }
   it.subs = (it.subs || []).concat([{ file: 'sub-' + i + ext, lang: String(lang || '').slice(0, 12) }]);
   notify(true); return true;
