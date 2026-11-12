@@ -282,7 +282,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          Carries the player at 2026.11.12.1. New there: a disc copy's picture subtitles are drawn on TVs and in the browser (Subtitles panel, Built in). This app already showed them; a file that plays without its full-format player now shows them too. Nothing else changes on the computer.
+          Carries the player at 2026.11.13.1. Small fixes: the featured titles on Home no longer change while the window is out of sight, and two small clean-ups in how subtitles and playlists are recognised.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
