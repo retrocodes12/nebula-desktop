@@ -282,7 +282,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          Carries the player at 2026.11.13.1. Small fixes: the featured titles on Home no longer change while the window is out of sight, and two small clean-ups in how subtitles and playlists are recognised.
+          Carries the player at 2026.11.14.2. Up to six profiles on an account, each with a picture and its own settings, and settings now follow a profile to its other devices. A profile can use the first profile's add-ons or keep a list of its own. Removing a profile deletes everything of it and is asked twice.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
