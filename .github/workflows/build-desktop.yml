@@ -282,7 +282,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          Carries the player at 2026.11.15.1. Press a cast member, a director or a writer on a title page to see their films and series, with Films, Series, Directed and Written filters.
+          Carries the player at 2026.11.17.2. When an add-on answers with a link instead of a stream, the Streams page shows it: a locked Nebula Sports channel lists its unlock and donation cards. A link opens in your browser, and the streams are asked for again when you come back.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
