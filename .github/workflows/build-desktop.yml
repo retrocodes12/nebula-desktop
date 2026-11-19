@@ -282,7 +282,7 @@ jobs:
           # the notes go through a file: an inline multi-line string would carry this step's
           # indentation into the release body, and four leading spaces are a code block in markdown
           cat > notes.md <<'EOF'
-          Carries the player at 2026.11.17.6. A stream's link can be copied: press its ⋯ or right-click it, or use Link in the player.
+          Carries the player at 2026.11.19.2. Volume and Mute in the player's Audio menu, kept on this computer. Add-ons with settings get a Configure button in Add-ons: change their settings and they keep their place.
           EOF
           gh release delete "v$V" -y --cleanup-tag 2>/dev/null || true
           gh release create "v$V" out/windows/* out/linux/* \
